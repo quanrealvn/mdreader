@@ -2,7 +2,7 @@
 
 A small Markdown reader for Windows. Double-click a `.md` file and read it with proper formatting, code highlighting, diagrams and math, in light or dark mode.
 
-There's also a web version at <https://mdreader.fly.dev>. Paste some Markdown and read it in your browser.
+There's also a web version at <https://mdreader.fly.dev>. Paste some Markdown or open a few files, and read them in your browser.
 
 ![MdReader](.github/screenshot.png)
 
@@ -17,7 +17,7 @@ To make MdReader your default for `.md` files, right-click one, choose **Open wi
 
 - GitHub-flavored Markdown, including alerts, tables, footnotes and task lists
 - Code highlighting, Mermaid diagrams and KaTeX math
-- Tabs, and files reload by themselves when you save them in your editor
+- Tabs that come back the next time you open it, and files that reload by themselves when you save them
 - Table of contents, find, zoom, print and PDF export
 - Colorful or classic style, light or dark theme
 
