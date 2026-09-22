@@ -1,0 +1,535 @@
+/* webapp.css — the web version's own chrome (ARCHITECTURE §15): header toolbar, paste view,
+   drop overlay, toast and missing-image placeholders. The reader itself (layout, TOC,
+   content, code, alerts) is the desktop CSS, unchanged. Only tokens from tokens.css. */
+
+:root {
+  --mdr-web-header-h: 56px;
+  --mdr-web-control-h: 34px;
+  --mdr-web-brand-a: #2F81F7;
+  --mdr-web-brand-b: #8250DF;
+}
+
+:root[data-theme="light"] {
+  --mdr-web-page: #F3F5F8;
+  --mdr-web-card: #FFFFFF;
+  --mdr-web-header-bg: rgba(255, 255, 255, 0.88);
+  --mdr-web-segment-bg: #EEF1F4;
+  --mdr-web-segment-on: #FFFFFF;
+  --mdr-web-input-bg: #FFFFFF;
+  --mdr-web-toast-bg: #1F2328;
+  --mdr-web-toast-fg: #FFFFFF;
+}
+
+:root[data-theme="dark"] {
+  --mdr-web-page: #010409;
+  --mdr-web-card: #0D1117;
+  --mdr-web-header-bg: rgba(13, 17, 23, 0.9);
+  --mdr-web-segment-bg: #151B23;
+  --mdr-web-segment-on: #2A313C;
+  --mdr-web-input-bg: #0D1117;
+  --mdr-web-toast-bg: #E6EDF3;
+  --mdr-web-toast-fg: #0D1117;
+}
+
+/* ---------- Views: paste (editor) vs reader (the desktop page) ---------- */
+
+html[data-view="paste"] .mdr-layout,
+html[data-view="paste"] #mdr-banner,
+html[data-view="paste"] .mdr-web-reader-only,
+html[data-view="reader"] #mdr-web-paste {
+  display: none;
+}
+
+/* ---------- Icons ---------- */
+
+.mdr-web-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Header ---------- */
+
+.mdr-web-header {
+  position: relative;
+  z-index: 30;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--mdr-space-3);
+  height: var(--mdr-web-header-h);
+  padding: 0 var(--mdr-space-4);
+  border-bottom: 1px solid var(--mdr-border);
+  background: var(--mdr-web-header-bg);
+  backdrop-filter: saturate(180%) blur(12px);
+}
+
+.mdr-web-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 4px 4px;
+  border: none;
+  border-radius: var(--mdr-radius-md);
+  background: transparent;
+  cursor: pointer;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--mdr-fg);
+}
+
+.mdr-web-brand:hover {
+  background: var(--mdr-bg-subtle);
+}
+
+.mdr-web-logo {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  filter: drop-shadow(0 1px 2px rgba(47, 129, 247, 0.35));
+}
+
+.mdr-web-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--mdr-space-2);
+  margin-left: auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.mdr-web-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.mdr-web-toolbar > * {
+  flex: none;
+}
+
+.mdr-web-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  overflow: hidden;
+}
+
+.mdr-web-progress::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, var(--mdr-web-brand-a), var(--mdr-web-brand-b), transparent);
+  animation: mdr-web-progress 1.1s var(--mdr-easing) infinite;
+}
+
+.mdr-web-progress[hidden] {
+  display: none;
+}
+
+@keyframes mdr-web-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+/* ---------- Buttons ---------- */
+
+.mdr-web-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--mdr-web-control-h);
+  padding: 0 12px;
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-md);
+  background: var(--mdr-web-card);
+  color: var(--mdr-fg);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--mdr-duration-fast) var(--mdr-easing),
+              border-color var(--mdr-duration-fast) var(--mdr-easing),
+              box-shadow var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.mdr-web-button:hover:not(:disabled) {
+  background: var(--mdr-bg-subtle);
+  border-color: color-mix(in srgb, var(--mdr-fg-muted) 45%, var(--mdr-border));
+}
+
+.mdr-web-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+a.mdr-web-button {
+  text-decoration: none;
+}
+
+.mdr-web-button--icon {
+  width: var(--mdr-web-control-h);
+  padding: 0;
+}
+
+.mdr-web-button--primary {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--mdr-web-brand-a), var(--mdr-web-brand-b));
+  color: #FFFFFF;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(47, 129, 247, 0.3), 0 4px 12px -4px rgba(130, 80, 223, 0.5);
+}
+
+.mdr-web-button--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--mdr-web-brand-a), var(--mdr-web-brand-b));
+  border-color: transparent;
+  filter: brightness(1.08);
+}
+
+.mdr-web-button--quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--mdr-fg-muted);
+}
+
+/* ---------- Segmented controls (theme, style) ---------- */
+
+.mdr-web-segmented {
+  display: inline-flex;
+  align-items: center;
+  height: var(--mdr-web-control-h);
+  padding: 3px;
+  gap: 2px;
+  border-radius: var(--mdr-radius-md);
+  background: var(--mdr-web-segment-bg);
+  border: 1px solid var(--mdr-border);
+}
+
+.mdr-web-segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mdr-fg-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--mdr-duration-fast) var(--mdr-easing),
+              color var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.mdr-web-segmented button:hover {
+  color: var(--mdr-fg);
+}
+
+.mdr-web-segmented button[aria-pressed="true"] {
+  background: var(--mdr-web-segment-on);
+  color: var(--mdr-fg);
+  box-shadow: var(--mdr-shadow-sm);
+}
+
+.mdr-web-segmented [data-style-choice="colorful"][aria-pressed="true"] .mdr-web-icon {
+  stroke: var(--mdr-web-brand-b);
+}
+
+/* ---------- Paste view ---------- */
+
+.mdr-web-paste {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  overflow-y: auto;
+  background:
+    radial-gradient(1200px 420px at 50% -120px, color-mix(in srgb, var(--mdr-web-brand-a) 14%, transparent), transparent 70%),
+    var(--mdr-web-page);
+}
+
+.mdr-web-paste-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mdr-space-4);
+  width: 100%;
+  min-width: 0;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--mdr-space-6) var(--mdr-space-5);
+}
+
+.mdr-web-editor {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-lg);
+  background: var(--mdr-web-card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -12px rgba(31, 35, 40, 0.18);
+  overflow: hidden;
+}
+
+.mdr-web-editor:focus-within {
+  border-color: color-mix(in srgb, var(--mdr-accent) 60%, var(--mdr-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mdr-accent) 18%, transparent),
+              0 12px 32px -12px rgba(31, 35, 40, 0.18);
+}
+
+.mdr-web-input {
+  display: block;
+  width: 100%;
+  min-height: 52vh;
+  padding: var(--mdr-space-4) var(--mdr-space-5);
+  border: none;
+  outline: none;
+  resize: vertical;
+  background: var(--mdr-web-input-bg);
+  color: var(--mdr-fg);
+  font-family: var(--mdr-font-code);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  tab-size: 4;
+}
+
+.mdr-web-input::placeholder {
+  color: var(--mdr-fg-muted);
+  opacity: 0.8;
+}
+
+.mdr-web-input:focus-visible {
+  outline: none;
+}
+
+.mdr-web-editor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mdr-space-2);
+  padding: var(--mdr-space-3) var(--mdr-space-4);
+  border-top: 1px solid var(--mdr-border);
+  background: var(--mdr-bg-subtle);
+}
+
+.mdr-web-spacer {
+  flex: 1 1 auto;
+}
+
+.mdr-web-count {
+  color: var(--mdr-fg-muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mdr-web-privacy {
+  margin: 0;
+  color: var(--mdr-fg-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* ---------- Reader additions ---------- */
+
+#mdr-error-path:empty {
+  display: none;
+}
+
+.mdr-web-missing-image {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mdr-space-2);
+  max-width: 100%;
+  margin: 2px 0;
+  padding: 10px 14px;
+  border: 1px dashed var(--mdr-border);
+  border-radius: var(--mdr-radius-md);
+  background: var(--mdr-bg-subtle);
+  color: var(--mdr-fg-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.mdr-web-missing-image .mdr-web-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.mdr-web-missing-image__text {
+  overflow: hidden;
+  color: var(--mdr-fg);
+  text-overflow: ellipsis;
+}
+
+.mdr-web-missing-image__note {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--mdr-radius-full);
+  background: color-mix(in srgb, var(--mdr-fg-muted) 14%, transparent);
+  font-size: 0.75rem;
+}
+
+/* ---------- Drop overlay ---------- */
+
+.mdr-web-dropzone {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--mdr-space-5);
+  background: color-mix(in srgb, var(--mdr-bg) 70%, transparent);
+  backdrop-filter: blur(3px);
+  pointer-events: none; /* the document keeps receiving dragover/drop */
+}
+
+.mdr-web-dropzone[hidden] {
+  display: none;
+}
+
+.mdr-web-dropzone-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mdr-space-3);
+  width: min(520px, 100%);
+  padding: var(--mdr-space-7) var(--mdr-space-5);
+  border: 2px dashed var(--mdr-accent);
+  border-radius: var(--mdr-radius-lg);
+  background: var(--mdr-web-card);
+  box-shadow: var(--mdr-shadow-lg);
+  color: var(--mdr-fg);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.mdr-web-dropzone-card .mdr-web-icon {
+  width: 36px;
+  height: 36px;
+  color: var(--mdr-accent);
+}
+
+/* ---------- Toast ---------- */
+
+.mdr-web-toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--mdr-space-5);
+  z-index: 70;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: var(--mdr-radius-md);
+  background: var(--mdr-web-toast-bg);
+  color: var(--mdr-web-toast-fg);
+  box-shadow: var(--mdr-shadow-md);
+  font-size: 0.875rem;
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+  transition: opacity var(--mdr-duration-base) var(--mdr-easing),
+              transform var(--mdr-duration-base) var(--mdr-easing);
+}
+
+.mdr-web-toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 760px) {
+  .mdr-web-header {
+    gap: var(--mdr-space-2);
+    padding: 0 var(--mdr-space-2);
+  }
+
+  .mdr-web-toolbar {
+    gap: 6px;
+  }
+
+  .mdr-web-label {
+    display: none;
+  }
+
+  .mdr-web-segmented button {
+    padding: 0 7px;
+  }
+
+  .mdr-web-toolbar > .mdr-web-button {
+    width: var(--mdr-web-control-h);
+    padding: 0;
+  }
+
+  .mdr-web-paste-inner {
+    padding: var(--mdr-space-5) var(--mdr-space-3);
+    gap: var(--mdr-space-3);
+  }
+
+  .mdr-web-input {
+    min-height: 44vh;
+    padding: var(--mdr-space-3);
+  }
+
+  .mdr-web-count {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .mdr-web-brand-name {
+    display: none;
+  }
+
+  .mdr-web-toolbar {
+    gap: 4px;
+  }
+
+  .mdr-web-segmented button {
+    padding: 0 6px;
+  }
+}
+
+/* ---------- Motion / print ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .mdr-web-progress::after {
+    animation-duration: 3s;
+  }
+
+  .mdr-web-toast,
+  .mdr-web-button,
+  .mdr-web-segmented button {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  .mdr-web-header,
+  .mdr-web-paste,
+  .mdr-web-dropzone,
+  .mdr-web-toast {
+    display: none !important;
+  }
+}
+
+/* The closed narrow-mode TOC drawer sits just off-screen; its shadow would still bleed onto the content edge. */
+@media (max-width: 899px) {
+  .mdr-toc.mdr-toc--closed {
+    box-shadow: none;
+  }
+}

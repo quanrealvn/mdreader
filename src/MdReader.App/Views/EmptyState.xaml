@@ -1,0 +1,100 @@
+<!--
+  Shown when no tabs are open (§4.11): app illustration, "Open file…" call to action and the recent-files list.
+  DataContext = MainViewModel (inherited). Pure WPF, so drag-and-drop onto it is handled by MainWindow.
+-->
+<UserControl x:Class="MdReader.App.Views.EmptyState"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:cmd="clr-namespace:MdReader.App.Commands"
+             AutomationProperties.AutomationId="EmptyState"
+             AutomationProperties.Name="No document open"
+             Background="{DynamicResource Brush.Document.Background}"
+             Foreground="{DynamicResource Brush.Foreground}"
+             Focusable="False">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <Grid MinHeight="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
+            <StackPanel Width="520" Margin="24,40,24,48" VerticalAlignment="Center" HorizontalAlignment="Center">
+
+                <!-- Illustration: a document glyph on a soft rounded tile -->
+                <Border Width="88" Height="88" CornerRadius="20" HorizontalAlignment="Center"
+                        Background="{DynamicResource Brush.Illustration.Background}">
+                    <Grid>
+                        <TextBlock Style="{StaticResource IconTextStyle}" FontSize="40" Text="&#xE8A5;"
+                                   Foreground="{DynamicResource Brush.Accent}" />
+                        <TextBlock Style="{StaticResource IconTextStyle}" FontSize="14" Text="&#xE8FD;" Margin="0,8,0,0"
+                                   Foreground="{DynamicResource Brush.Accent}" />
+                    </Grid>
+                </Border>
+
+                <TextBlock Margin="0,22,0,0" HorizontalAlignment="Center" FontFamily="{StaticResource Font.Display}" FontSize="22"
+                           FontWeight="SemiBold" Text="Open a Markdown file" />
+                <TextBlock Margin="0,6,0,0" HorizontalAlignment="Center" FontSize="14" TextAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Brush.Foreground.Muted}"
+                           Text="Drop a .md file anywhere in this window, or choose one to open." />
+
+                <Button x:Name="OpenButton" Margin="0,22,0,0" HorizontalAlignment="Center" Style="{StaticResource AccentButtonStyle}"
+                        Command="{Binding OpenCommand}"
+                        AutomationProperties.AutomationId="EmptyStateOpenButton"
+                        AutomationProperties.Name="Open file"
+                        ToolTip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[EmptyStateOpenButton]}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource IconTextStyle}" FontSize="14" Text="&#xED25;" Margin="0,1,10,0" />
+                        <TextBlock Text="Open file…" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <!-- Recent files -->
+                <StackPanel Margin="0,40,0,0" Visibility="{Binding HasRecentFiles, Converter={StaticResource BoolToVisibility}}">
+                    <Grid Margin="10,0,4,6">
+                        <TextBlock Text="Recent" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Brush.Foreground.Muted}" />
+                        <Button HorizontalAlignment="Right" Style="{StaticResource SubtleButtonStyle}" Padding="8,3"
+                                FontSize="12" Foreground="{DynamicResource Brush.Foreground.Muted}"
+                                Command="{Binding ClearRecentFilesCommand}" Content="Clear"
+                                AutomationProperties.AutomationId="ClearRecentButton"
+                                AutomationProperties.Name="Clear recent files" ToolTip="Clear the recent files list" />
+                    </Grid>
+                    <Border Height="1" Margin="10,0,10,6" Background="{DynamicResource Brush.Border.Subtle}" />
+                    <ItemsControl x:Name="RecentList" ItemsSource="{Binding RecentFiles}" Focusable="False"
+                                  AutomationProperties.AutomationId="RecentList"
+                                  AutomationProperties.Name="Recent files"
+                                  KeyboardNavigation.TabNavigation="Continue">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource SubtleButtonStyle}" Margin="0,1"
+                                        Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding FullPath}"
+                                        AutomationProperties.Name="{Binding FullPath}"
+                                        ToolTip="{Binding FullPath}" ToolTipService.InitialShowDelay="900">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Style="{StaticResource IconTextStyle}" FontSize="16" Text="&#xE8A5;"
+                                                   Margin="2,0,14,0" Foreground="{DynamicResource Brush.Foreground.Muted}" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding FileName}" FontSize="14" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Folder}" FontSize="12" Margin="0,1,0,0" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource Brush.Foreground.Muted}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <TextBlock Margin="0,36,0,0" HorizontalAlignment="Center" FontSize="12"
+                           Foreground="{DynamicResource Brush.Foreground.Muted}"
+                           ><Run Text="Ctrl+O" FontWeight="SemiBold" /><Run Text=" open    ·    " /><Run Text="Ctrl+Tab"
+                           FontWeight="SemiBold" /><Run Text=" switch tabs    ·    " /><Run Text="Ctrl+F" FontWeight="SemiBold"
+                           /><Run Text=" find    ·    " /><Run Text="Ctrl+B" FontWeight="SemiBold" /><Run Text=" contents" /></TextBlock>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

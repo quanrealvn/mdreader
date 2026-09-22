@@ -1,0 +1,18 @@
+<!--
+  Compiled as a Page (EnableDefaultApplicationDefinition=false); Program.Main creates the App, builds the services and shows
+  the main window (ARCHITECTURE §6). MergedDictionaries[0] is the palette (Light.xaml or Dark.xaml): ThemeService inserts
+  the effective one there before any window exists and swaps it on theme changes, so only the palette in use is parsed.
+  Controls.xaml references palette brushes only through DynamicResource.
+-->
+<Application x:Class="MdReader.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

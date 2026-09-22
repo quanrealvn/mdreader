@@ -1,0 +1,661 @@
+/*
+ * markdown.css — GitHub-grade typography for rendered Markdown content.
+ *
+ * Everything here is scoped under `.markdown-body` (the #mdr-content article WP7 owns).
+ * Tokens consumed from tokens.css (WP7): --mdr-bg, --mdr-fg, --mdr-fg-muted, --mdr-border,
+ * --mdr-bg-subtle, --mdr-accent, --mdr-alert-*, and the font stacks. Content-specific
+ * variables (table stripes, kbd shadow, mark background, etc.) are defined here, keyed on
+ * :root[data-theme="light"] / :root[data-theme="dark"], per WP8 ownership rules.
+ */
+
+:root[data-theme="light"] {
+  --mdr-content-kbd-bg: #f6f8fa;
+  --mdr-content-kbd-border: #d1d9e0;
+  --mdr-content-kbd-shadow: inset 0 -1px 0 #d1d9e0;
+  --mdr-content-mark-bg: #fff8c5;
+  --mdr-content-mark-fg: #1f2328;
+  --mdr-content-table-stripe: #f6f8fa;
+  --mdr-content-img-bg: #ffffff;
+}
+
+:root[data-theme="dark"] {
+  --mdr-content-kbd-bg: #151b23;
+  --mdr-content-kbd-border: #3d444d;
+  --mdr-content-kbd-shadow: inset 0 -1px 0 #3d444d;
+  --mdr-content-mark-bg: #9e6a03;
+  --mdr-content-mark-fg: #e6edf3;
+  --mdr-content-table-stripe: #151b23;
+  --mdr-content-img-bg: #0d1117;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Base                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body {
+  font-family: -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif,
+    "Segoe UI Emoji";
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--mdr-fg);
+  word-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+}
+
+.markdown-body::before {
+  display: table;
+  content: "";
+}
+
+.markdown-body::after {
+  display: table;
+  clear: both;
+  content: "";
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0 !important;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Paragraphs, spacing rhythm                                             */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body p {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.markdown-body p[align="center"] {
+  text-align: center;
+}
+.markdown-body p[align="right"] {
+  text-align: right;
+}
+.markdown-body p[align="left"] {
+  text-align: left;
+}
+
+/* RTL paragraphs: honor the dir attribute Markdig/raw HTML may emit. */
+.markdown-body [dir="rtl"] {
+  text-align: right;
+  unicode-bidi: embed;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Headings                                                                */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  scroll-margin-top: 16px;
+}
+
+.markdown-body h1[align="center"],
+.markdown-body h2[align="center"],
+.markdown-body h3[align="center"],
+.markdown-body h4[align="center"],
+.markdown-body h5[align="center"],
+.markdown-body h6[align="center"] {
+  text-align: center;
+}
+
+.markdown-body h1 {
+  padding-bottom: 0.3em;
+  font-size: 2em;
+  color: var(--mdr-h1);
+  border-bottom: 1px solid var(--mdr-border);
+}
+
+.markdown-body h2 {
+  padding-bottom: 0.3em;
+  font-size: 1.5em;
+  color: var(--mdr-h2);
+  border-bottom: 1px solid var(--mdr-border);
+}
+
+.markdown-body h3 {
+  font-size: 1.25em;
+  color: var(--mdr-h3);
+}
+
+.markdown-body h4 {
+  font-size: 1em;
+  color: var(--mdr-h4);
+}
+
+.markdown-body h5 {
+  font-size: 0.875em;
+  color: var(--mdr-h5);
+}
+
+.markdown-body h6 {
+  font-size: 0.85em;
+  color: var(--mdr-h6);
+}
+
+/* Colorful only: tint the h1/h2 rule with their own heading hue instead of
+   the plain neutral border. Classic keeps `border-bottom: 1px solid
+   var(--mdr-border)` above untouched (exact pre-M9 reproduction) — a
+   color-mix keyed off --mdr-h1/--mdr-h2 can't be the single shared value
+   because those tokens equal var(--mdr-fg) under Classic, which would tint
+   the border near-black/near-white instead of leaving it neutral. */
+:root:not([data-style="classic"]) .markdown-body h1 {
+  border-bottom-color: color-mix(in srgb, var(--mdr-h1) 55%, transparent);
+}
+
+:root:not([data-style="classic"]) .markdown-body h2 {
+  border-bottom-color: color-mix(in srgb, var(--mdr-h2) 55%, transparent);
+}
+
+/* A heading that is also a link target must not hide under a sticky banner. */
+.markdown-body :target {
+  scroll-margin-top: 16px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Links                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body a {
+  color: var(--mdr-link);
+  text-decoration: none;
+  background-color: transparent;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body a:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Lists                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body ul,
+.markdown-body ol {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding-left: 2em;
+}
+
+.markdown-body ul ul,
+.markdown-body ul ol,
+.markdown-body ol ol,
+.markdown-body ol ul {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.markdown-body li > p {
+  margin-top: 16px;
+}
+
+.markdown-body li + li {
+  margin-top: 0.25em;
+}
+
+.markdown-body li::marker {
+  color: var(--mdr-list-marker);
+}
+
+/* Task lists: no bullets, aligned checkboxes. */
+.markdown-body ul.contains-task-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+.markdown-body ul.contains-task-list ul.contains-task-list {
+  padding-left: 1.5em;
+}
+
+.markdown-body .task-list-item {
+  list-style: none;
+}
+
+/* Custom-painted rather than native: disabled checkboxes (every task-list checkbox
+   is emitted `disabled`) ignore `accent-color` in Chromium and paint as a solid
+   filled square instead of an outlined box, which looks broken in light theme. */
+.markdown-body .task-list-item input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0 0.35em 0.25em -1.6em;
+  vertical-align: middle;
+  background-color: var(--mdr-bg);
+  border: 1px solid var(--mdr-border);
+  border-radius: 3px;
+}
+
+.markdown-body .task-list-item input[type="checkbox"]:checked {
+  background-color: var(--mdr-accent);
+  border-color: var(--mdr-accent);
+}
+
+.markdown-body .task-list-item input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background-color: #ffffff;
+  -webkit-mask-image: url("../vendor/octicons/check.svg");
+  mask-image: url("../vendor/octicons/check.svg");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: 12px 12px;
+  mask-size: 12px 12px;
+}
+
+.markdown-body .task-list-item + .task-list-item {
+  margin-top: 0.25em;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Blockquotes                                                            */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body blockquote {
+  margin: 0 0 16px 0;
+  padding: 0 1em;
+  color: var(--mdr-quote-fg);
+  border-left: 0.25em solid var(--mdr-quote-border);
+}
+
+.markdown-body blockquote > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tables                                                                  */
+/* ---------------------------------------------------------------------- */
+
+/* Horizontal scroll for wide tables (GitHub's own technique: a block-level table
+   with width:max-content scrolls itself, no wrapper element required). */
+.markdown-body table {
+  width: max-content;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.markdown-body table th,
+.markdown-body table td {
+  padding: 6px 13px;
+  border: 1px solid var(--mdr-border);
+}
+
+.markdown-body table th {
+  font-weight: 600;
+  color: var(--mdr-table-head-fg);
+  background-color: var(--mdr-bg-subtle);
+}
+
+.markdown-body table tr {
+  background-color: var(--mdr-bg);
+  border-top: 1px solid var(--mdr-border);
+}
+
+.markdown-body table tr:nth-child(2n) {
+  background-color: var(--mdr-content-table-stripe);
+}
+
+.markdown-body table th[align="center"],
+.markdown-body table td[align="center"] {
+  text-align: center;
+}
+.markdown-body table th[align="right"],
+.markdown-body table td[align="right"] {
+  text-align: right;
+}
+.markdown-body table th[align="left"],
+.markdown-body table td[align="left"] {
+  text-align: left;
+}
+
+.markdown-body table img {
+  background-color: transparent;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Images                                                                  */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body img {
+  max-width: 100%;
+  box-sizing: content-box;
+  background-color: var(--mdr-content-img-bg);
+}
+
+.markdown-body img[align="right"] {
+  padding-left: 20px;
+  float: right;
+}
+
+.markdown-body img[align="left"] {
+  padding-right: 20px;
+  float: left;
+}
+
+.markdown-body img[align="center"] {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* p align="center" wrapping a single image (common README logo pattern). */
+.markdown-body p[align="center"] img {
+  display: inline-block;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Horizontal rule                                                        */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body hr {
+  height: 0.25em;
+  padding: 0;
+  margin: 24px 0;
+  background-color: var(--mdr-hr);
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* kbd, mark                                                              */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body kbd {
+  display: inline-block;
+  padding: 3px 5px;
+  font: 11px "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+  line-height: 10px;
+  color: var(--mdr-fg);
+  vertical-align: middle;
+  background-color: var(--mdr-content-kbd-bg);
+  border: 1px solid var(--mdr-content-kbd-border);
+  border-radius: 6px;
+  box-shadow: var(--mdr-content-kbd-shadow);
+}
+
+.markdown-body mark {
+  background-color: var(--mdr-content-mark-bg);
+  color: var(--mdr-content-mark-fg);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* details / summary                                                      */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body details {
+  margin-bottom: 16px;
+  border: 1px solid var(--mdr-border);
+  border-radius: 6px;
+  padding: 0;
+}
+
+.markdown-body details summary {
+  cursor: pointer;
+  padding: 8px 16px;
+  font-weight: 600;
+}
+
+.markdown-body details[open] summary {
+  border-bottom: 1px solid var(--mdr-border);
+  margin-bottom: 8px;
+}
+
+.markdown-body details > *:not(summary) {
+  padding: 0 16px;
+}
+
+.markdown-body details > *:last-child {
+  padding-bottom: 16px;
+}
+
+.markdown-body summary::-webkit-details-marker {
+  color: var(--mdr-fg-muted);
+}
+
+.markdown-body summary:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Footnotes                                                              */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body .footnote-ref {
+  font-size: 0.75em;
+}
+
+.markdown-body .footnotes {
+  margin-top: 32px;
+  font-size: 0.875em;
+  color: var(--mdr-fg-muted);
+}
+
+.markdown-body .footnotes hr {
+  height: 1px;
+  background-color: var(--mdr-hr);
+  margin-bottom: 16px;
+}
+
+.markdown-body .footnotes ol {
+  padding-left: 1.5em;
+}
+
+.markdown-body .footnotes li:target {
+  scroll-margin-top: 16px;
+}
+
+.markdown-body .footnote-back-ref {
+  display: inline-block;
+  margin-left: 0.25em;
+  text-decoration: none;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Definition lists                                                       */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body dl {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding: 0;
+}
+
+.markdown-body dl dt {
+  padding: 0;
+  margin-top: 16px;
+  font-size: 1em;
+  font-style: italic;
+  font-weight: 600;
+}
+
+.markdown-body dl dd {
+  padding: 0 16px;
+  margin-bottom: 16px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* sub / sup                                                              */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body sub,
+.markdown-body sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.markdown-body sub {
+  bottom: -0.25em;
+}
+
+.markdown-body sup {
+  top: -0.5em;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Figures (raw HTML)                                                     */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body figure {
+  margin: 0 0 16px 0;
+}
+
+.markdown-body figcaption {
+  color: var(--mdr-fg-muted);
+  font-size: 0.875em;
+}
+
+/* ---------------------------------------------------------------------- */
+/* strong / em / del / small                                              */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body strong {
+  font-weight: 600;
+  color: var(--mdr-strong);
+}
+
+.markdown-body em {
+  font-style: italic;
+  color: var(--mdr-em);
+}
+
+.markdown-body del,
+.markdown-body s,
+.markdown-body strike {
+  color: var(--mdr-del);
+}
+
+.markdown-body small {
+  font-size: 90%;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Math (KaTeX) — error styles live in code.css                          */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body span.math {
+  white-space: nowrap;
+}
+
+.markdown-body div.math {
+  margin: 16px 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.markdown-body div.math .katex-display {
+  margin: 0;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Diagrams (Mermaid) — error styles live in code.css                    */
+/* ---------------------------------------------------------------------- */
+
+/* Before enhancement, the raw source sits in a <pre>/<div>; keep it from
+   looking like broken code while waiting to be replaced. */
+.markdown-body pre.mermaid,
+.markdown-body div.mermaid {
+  overflow-x: auto;
+}
+
+/* After enhancement, enhance.js replaces the element with this wrapper. */
+.markdown-body .mdr-mermaid {
+  margin: 16px 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.markdown-body .mdr-mermaid svg {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+}
+
+/* Edge labels (flowchart/state-diagram arrow captions) are plain HTML
+   (`span.edgeLabel` inside a `foreignObject`), not SVG shapes — Mermaid's own
+   built-in themes hard-code their background to a fixed mid-gray
+   (`hsl(0, 0%, 34.4%)` in "dark") that assumes a lighter canvas than
+   `--mdr-bg`. Against our near-black dark background that gray reads as a
+   stray light patch; pin it to our own chip color in both themes instead, for
+   the same "quiet chip" look code/table header cells already use. Higher
+   specificity than Mermaid's own `.edgeLabel`/`.edgeLabel p` rules is enough,
+   but `!important` guards against attribute-selector variants like
+   `.edgeLabel[data-look="neo"]` in newer Mermaid releases. */
+.markdown-body .mdr-mermaid .edgeLabel,
+.markdown-body .mdr-mermaid .edgeLabel p,
+.markdown-body .mdr-mermaid .labelBkg {
+  background-color: var(--mdr-bg-subtle) !important;
+  color: var(--mdr-fg) !important;
+}
+
+/* Emoji: Markdig (UseEmojiAndSmiley) emits plain Unicode characters, not a
+   wrapped <span>/<img>, so no selector is needed — color glyphs come from the
+   "Segoe UI Emoji" fallback already in the .markdown-body font stack above. */
+
+/* ---------------------------------------------------------------------- */
+/* Print                                                                   */
+/* ---------------------------------------------------------------------- */
+
+@media print {
+  .markdown-body a {
+    color: var(--mdr-fg);
+    text-decoration: underline;
+  }
+
+  .markdown-body table,
+  .markdown-body pre,
+  .markdown-body figure {
+    break-inside: avoid;
+  }
+
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3,
+  .markdown-body h4,
+  .markdown-body h5,
+  .markdown-body h6 {
+    break-after: avoid;
+  }
+
+  .markdown-body img {
+    max-width: 100% !important;
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "name": "mdreader-vscode",
+  "displayName": "MdReader: Open in MdReader",
+  "description": "Open Markdown files in MdReader.",
+  "version": "1.0.0",
+  "publisher": "mdreader",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quanrealvn/mdreader"
+  },
+  "homepage": "https://github.com/quanrealvn/mdreader",
+  "bugs": {
+    "url": "https://github.com/quanrealvn/mdreader/issues"
+  },
+  "icon": "images/icon.png",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "mdreader",
+    "preview",
+    "reader"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "mdreader.openInMdReader",
+        "title": "Open in MdReader",
+        "category": "MdReader",
+        "icon": "$(open-preview)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "mdreader.openInMdReader",
+          "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdown || resourceExtname == .mkd || resourceExtname == .mkdn",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "mdreader.openInMdReader",
+          "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdown || resourceExtname == .mkd || resourceExtname == .mkdn",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "mdreader.openInMdReader",
+          "when": "resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdown || resourceExtname == .mkd || resourceExtname == .mkdn",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "mdreader.openInMdReader",
+          "when": "editorLangId == markdown"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MdReader",
+      "properties": {
+        "mdreader.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Full path to MdReader.exe. Leave empty to find it automatically."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "test": "node --test out/test/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.7.2"
+  }
+}

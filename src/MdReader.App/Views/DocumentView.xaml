@@ -1,0 +1,55 @@
+<!-- One document tab's view (ARCHITECTURE §4.10–§4.12): the tab's WebView2 (created in code into WebViewHost, never
+     re-parented; replaced by a new control only to recover from a failed initialization or a dead browser process), the find
+     bar docked above it (WPF can't draw over the WebView2 HwndHost), and a WPF error panel used only when the page itself
+     can't be shown (protocol mismatch, repeated renderer crashes, WebView2 failure). -->
+<UserControl x:Class="MdReader.App.Views.DocumentView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:MdReader.App.Views"
+             AutomationProperties.AutomationId="DocumentView"
+             Focusable="False">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <views:FindBar x:Name="FindBarControl" Grid.Row="0" />
+
+        <!-- Holds the tab's WebView2 (AutomationId "WebView"), created in code. -->
+        <Grid x:Name="WebViewHost" Grid.Row="1" />
+
+        <Border x:Name="HostErrorPanel"
+                Grid.Row="1"
+                Visibility="Collapsed"
+                AutomationProperties.AutomationId="DocumentHostError"
+                Background="{DynamicResource Brush.Document.Background}">
+            <StackPanel MaxWidth="640" Margin="32" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock x:Name="HostErrorTitle"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource Brush.Foreground}" />
+                <TextBlock x:Name="HostErrorMessage"
+                           Margin="0,8,0,0"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource Brush.Foreground}" />
+                <TextBox x:Name="HostErrorPath"
+                         Margin="0,12,0,0"
+                         Padding="0"
+                         IsReadOnly="True"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         TextWrapping="Wrap"
+                         Foreground="{DynamicResource Brush.Foreground.Muted}" />
+                <Button x:Name="HostErrorRetryButton"
+                        AutomationProperties.AutomationId="HostErrorRetryButton"
+                        Margin="0,16,0,0"
+                        Padding="14,5"
+                        HorizontalAlignment="Left"
+                        Content="Try again"
+                        Click="OnHostErrorRetryClick" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Plain SDK + the ASP.NET Core shared framework (not Microsoft.NET.Sdk.Web): wwwroot is composed from linked Content
+       items below, and the Web SDK's static-web-assets pipeline would try to manage (and conflict with) those. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MdReader.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- The implicit usings Microsoft.NET.Sdk.Web would add. -->
+  <ItemGroup>
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MdReader.Core\MdReader.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MdReader.Web.Tests" />
+  </ItemGroup>
+
+  <!-- wwwroot (ARCHITECTURE §15): the desktop page assets from web/ minus its index.html and WebView2 bridge, overlaid by
+       webapp/ (the web index.html, the fetch-based bridge.js shim, webapp.js/css).
+       Copied to <output>/wwwroot and <publish>/wwwroot; Program.cs serves AppContext.BaseDirectory/wwwroot. -->
+  <ItemGroup>
+    <Content Include="..\..\web\**\*" Exclude="..\..\web\index.html;..\..\web\js\bridge.js" LinkBase="wwwroot"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\webapp\**\*" LinkBase="wwwroot"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

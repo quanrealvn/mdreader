@@ -1,0 +1,365 @@
+/*
+ * code.css — inline code, fenced code blocks, syntax-highlight token colors,
+ * the per-block language label + copy button, and Mermaid/KaTeX error styles.
+ *
+ * Scoped under `.markdown-body`. Highlight.js token colors below are derived from
+ * the vendored web/vendor/highlight/styles/github.min.css and github-dark.min.css
+ * (BSD-3-Clause, GitHub's own light/dark palettes) and applied as CSS variables so
+ * both themes work without swapping stylesheets or re-highlighting on theme change.
+ */
+
+:root[data-theme="light"] {
+  --mdr-code-chip-bg: #f6f8fa;
+  --mdr-code-btn-hover-bg: #eaeef2;
+  --mdr-code-copied-fg: #1a7f37;
+
+  --mdr-hljs-fg: #24292e;
+  --mdr-hljs-keyword: #d73a49;
+  --mdr-hljs-title: #6f42c1;
+  --mdr-hljs-attr: #005cc5;
+  --mdr-hljs-string: #032f62;
+  --mdr-hljs-built-in: #e36209;
+  --mdr-hljs-comment: #6a737d;
+  --mdr-hljs-name: #22863a;
+  --mdr-hljs-section: #005cc5;
+  --mdr-hljs-bullet: #735c0f;
+  --mdr-hljs-addition-fg: #22863a;
+  --mdr-hljs-addition-bg: #f0fff4;
+  --mdr-hljs-deletion-fg: #b31d28;
+  --mdr-hljs-deletion-bg: #ffeef0;
+}
+
+:root[data-theme="dark"] {
+  --mdr-code-chip-bg: #151b23;
+  --mdr-code-btn-hover-bg: #21262d;
+  --mdr-code-copied-fg: #3fb950;
+
+  --mdr-hljs-fg: #c9d1d9;
+  --mdr-hljs-keyword: #ff7b72;
+  --mdr-hljs-title: #d2a8ff;
+  --mdr-hljs-attr: #79c0ff;
+  --mdr-hljs-string: #a5d6ff;
+  --mdr-hljs-built-in: #ffa657;
+  --mdr-hljs-comment: #8b949e;
+  --mdr-hljs-name: #7ee787;
+  --mdr-hljs-section: #1f6feb;
+  --mdr-hljs-bullet: #f2cc60;
+  --mdr-hljs-addition-fg: #aff5b4;
+  --mdr-hljs-addition-bg: #033a16;
+  --mdr-hljs-deletion-fg: #ffdcd7;
+  --mdr-hljs-deletion-bg: #67060c;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Inline code chip                                                        */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body code,
+.markdown-body tt {
+  padding: 0.2em 0.4em;
+  margin: 0;
+  font-size: 85%;
+  white-space: break-spaces;
+  color: var(--mdr-code-fg);
+  background-color: var(--mdr-code-bg);
+  border-radius: 6px;
+  font-family: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Code blocks                                                             */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body pre {
+  position: relative;
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding: 16px;
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  color: var(--mdr-fg);
+  background-color: var(--mdr-bg-subtle);
+  border-radius: 6px;
+  font-family: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+  tab-size: 4;
+  -moz-tab-size: 4;
+}
+
+.markdown-body pre code,
+.markdown-body pre tt {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
+  line-height: inherit;
+  word-wrap: normal;
+  /* Higher specificity than `.markdown-body code` above (which sets the
+     inline-code chip's --mdr-code-fg color) — fenced code blocks are
+     governed by --mdr-fg/the highlight.js token colors, not the inline
+     "code" semantic role, so restore inheritance from the surrounding
+     `pre` (color: var(--mdr-fg)) explicitly. */
+  color: inherit;
+  background-color: transparent;
+  border: 0;
+  font-size: 100%;
+  white-space: pre;
+}
+
+/* highlight.js applies this class after enhanceCode() runs. Before that,
+   the block is still perfectly readable in the plain foreground color. */
+.markdown-body pre code.hljs {
+  color: var(--mdr-hljs-fg);
+  background-color: transparent;
+  padding: 0;
+}
+
+.markdown-body .hljs-doctag,
+.markdown-body .hljs-keyword,
+.markdown-body .hljs-meta .hljs-keyword,
+.markdown-body .hljs-template-tag,
+.markdown-body .hljs-template-variable,
+.markdown-body .hljs-type,
+.markdown-body .hljs-variable.language_ {
+  color: var(--mdr-hljs-keyword);
+}
+
+.markdown-body .hljs-title,
+.markdown-body .hljs-title.class_,
+.markdown-body .hljs-title.class_.inherited__,
+.markdown-body .hljs-title.function_ {
+  color: var(--mdr-hljs-title);
+}
+
+.markdown-body .hljs-attr,
+.markdown-body .hljs-attribute,
+.markdown-body .hljs-literal,
+.markdown-body .hljs-meta,
+.markdown-body .hljs-number,
+.markdown-body .hljs-operator,
+.markdown-body .hljs-selector-attr,
+.markdown-body .hljs-selector-class,
+.markdown-body .hljs-selector-id,
+.markdown-body .hljs-variable {
+  color: var(--mdr-hljs-attr);
+}
+
+.markdown-body .hljs-meta .hljs-string,
+.markdown-body .hljs-regexp,
+.markdown-body .hljs-string {
+  color: var(--mdr-hljs-string);
+}
+
+.markdown-body .hljs-built_in,
+.markdown-body .hljs-symbol {
+  color: var(--mdr-hljs-built-in);
+}
+
+.markdown-body .hljs-code,
+.markdown-body .hljs-comment,
+.markdown-body .hljs-formula {
+  color: var(--mdr-hljs-comment);
+}
+
+.markdown-body .hljs-name,
+.markdown-body .hljs-quote,
+.markdown-body .hljs-selector-pseudo,
+.markdown-body .hljs-selector-tag {
+  color: var(--mdr-hljs-name);
+}
+
+.markdown-body .hljs-subst {
+  color: var(--mdr-hljs-fg);
+}
+
+.markdown-body .hljs-section {
+  color: var(--mdr-hljs-section);
+  font-weight: 700;
+}
+
+.markdown-body .hljs-bullet {
+  color: var(--mdr-hljs-bullet);
+}
+
+.markdown-body .hljs-emphasis {
+  color: var(--mdr-hljs-fg);
+  font-style: italic;
+}
+
+.markdown-body .hljs-strong {
+  color: var(--mdr-hljs-fg);
+  font-weight: 700;
+}
+
+.markdown-body .hljs-addition {
+  color: var(--mdr-hljs-addition-fg);
+  background-color: var(--mdr-hljs-addition-bg);
+}
+
+.markdown-body .hljs-deletion {
+  color: var(--mdr-hljs-deletion-fg);
+  background-color: var(--mdr-hljs-deletion-bg);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Code block toolbar: language label + copy button                      */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body .mdr-code-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease-in-out;
+}
+
+.markdown-body pre:hover .mdr-code-toolbar,
+.markdown-body pre:focus-within .mdr-code-toolbar {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  /* Touch devices have no hover: keep the toolbar reachable. */
+  .markdown-body .mdr-code-toolbar {
+    opacity: 1;
+  }
+}
+
+.markdown-body .mdr-code-lang {
+  font-family: -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--mdr-fg-muted);
+  background-color: var(--mdr-code-chip-bg);
+  border: 1px solid var(--mdr-border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  user-select: none;
+}
+
+.markdown-body .mdr-code-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--mdr-border);
+  border-radius: 6px;
+  background-color: var(--mdr-code-chip-bg);
+  color: var(--mdr-fg-muted);
+  cursor: pointer;
+}
+
+.markdown-body .mdr-code-copy:hover {
+  background-color: var(--mdr-code-btn-hover-bg);
+  color: var(--mdr-fg);
+}
+
+.markdown-body .mdr-code-copy:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 2px;
+}
+
+.markdown-body .mdr-code-copy.is-copied {
+  color: var(--mdr-code-copied-fg);
+}
+
+.markdown-body .mdr-code-copy-icon {
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask-image: url("../vendor/octicons/copy.svg");
+  mask-image: url("../vendor/octicons/copy.svg");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: 16px 16px;
+  mask-size: 16px 16px;
+}
+
+.markdown-body .mdr-code-copy.is-copied .mdr-code-copy-icon {
+  -webkit-mask-image: url("../vendor/octicons/check.svg");
+  mask-image: url("../vendor/octicons/check.svg");
+}
+
+.markdown-body .mdr-code-copy-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* KaTeX error styles                                                      */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body .katex-error,
+.markdown-body .mdr-math-error {
+  color: var(--mdr-alert-caution) !important;
+  font-family: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+}
+
+.markdown-body .mdr-math-error {
+  display: inline-block;
+  font-size: 85%;
+  white-space: pre-wrap;
+  cursor: help;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Mermaid error styles                                                    */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body pre.mdr-mermaid-error {
+  display: block;
+  margin: 16px 0;
+  padding: 12px 16px;
+  overflow-x: auto;
+  color: var(--mdr-fg);
+  background-color: var(--mdr-bg-subtle);
+  border: 1px solid var(--mdr-alert-caution);
+  border-radius: 6px;
+  font-family: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+  font-size: 85%;
+  white-space: pre-wrap;
+}
+
+.markdown-body pre.mdr-mermaid-error .mdr-mermaid-error-message {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--mdr-alert-caution);
+  font-weight: 600;
+  font-family: -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  white-space: normal;
+}
+
+.markdown-body pre.mdr-mermaid-error .mdr-mermaid-error-source {
+  display: block;
+  color: var(--mdr-fg-muted);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Print                                                                   */
+/* ---------------------------------------------------------------------- */
+
+@media print {
+  .markdown-body .mdr-code-toolbar {
+    display: none;
+  }
+
+  .markdown-body pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+}

@@ -1,0 +1,400 @@
+/* layout.css — app chrome layout: banner, TOC sidebar, content column, error view,
+   scrollbars, focus rings and the narrow-viewport overlay drawer. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--mdr-bg);
+  color: var(--mdr-fg);
+  font-family: var(--mdr-font-text);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- Banner ---------- */
+
+.mdr-banner {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: var(--mdr-space-2);
+  padding: var(--mdr-space-2) var(--mdr-space-5);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--mdr-border);
+  background: var(--mdr-bg-subtle);
+  color: var(--mdr-fg);
+}
+
+.mdr-banner:not([hidden]) {
+  display: flex;
+}
+
+.mdr-banner--info {
+  border-bottom-color: var(--mdr-accent);
+  background: color-mix(in srgb, var(--mdr-accent) 10%, var(--mdr-bg));
+}
+
+.mdr-banner--warning {
+  border-bottom-color: var(--mdr-alert-warning);
+  background: color-mix(in srgb, var(--mdr-alert-warning) 12%, var(--mdr-bg));
+}
+
+.mdr-banner--error {
+  border-bottom-color: var(--mdr-alert-caution);
+  background: color-mix(in srgb, var(--mdr-alert-caution) 12%, var(--mdr-bg));
+}
+
+/* ---------- Layout shell ---------- */
+
+.mdr-layout {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+/* ---------- TOC sidebar ---------- */
+
+.mdr-toc {
+  flex: none;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--mdr-border);
+  background: var(--mdr-bg);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.mdr-toc--closed {
+  display: none;
+}
+
+.mdr-toc-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--mdr-space-4) var(--mdr-space-4) var(--mdr-space-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mdr-fg-muted);
+}
+
+.mdr-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--mdr-radius-sm);
+  background: transparent;
+  color: var(--mdr-fg-muted);
+  cursor: pointer;
+  transition: background-color var(--mdr-duration-fast) var(--mdr-easing),
+              color var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.mdr-icon-button::before {
+  content: "\2715";
+  font-size: 12px;
+  line-height: 1;
+}
+
+.mdr-icon-button:hover {
+  background: var(--mdr-bg-subtle);
+  color: var(--mdr-fg);
+}
+
+.mdr-toc-list {
+  flex: 1 1 auto;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--mdr-space-4);
+}
+
+.mdr-toc-item {
+  position: relative;
+}
+
+.mdr-toc-item[data-level="1"] .mdr-toc-link { padding-left: var(--mdr-space-4); font-weight: 600; }
+.mdr-toc-item[data-level="2"] .mdr-toc-link { padding-left: var(--mdr-space-4); }
+.mdr-toc-item[data-level="3"] .mdr-toc-link { padding-left: calc(var(--mdr-space-4) + 16px); }
+.mdr-toc-item[data-level="4"] .mdr-toc-link { padding-left: calc(var(--mdr-space-4) + 32px); }
+.mdr-toc-item[data-level="5"] .mdr-toc-link { padding-left: calc(var(--mdr-space-4) + 48px); }
+.mdr-toc-item[data-level="6"] .mdr-toc-link { padding-left: calc(var(--mdr-space-4) + 64px); }
+
+.mdr-toc-link {
+  display: block;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-right: var(--mdr-space-4);
+  color: var(--mdr-fg-muted);
+  text-decoration: none;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color var(--mdr-duration-fast) var(--mdr-easing),
+              color var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.mdr-toc-link:hover {
+  color: var(--mdr-fg);
+  background: var(--mdr-bg-subtle);
+}
+
+.mdr-toc-link[aria-current] {
+  color: var(--mdr-accent);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--mdr-accent) 8%, transparent);
+}
+
+.mdr-toc-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+}
+
+.mdr-toc-item:has(.mdr-toc-link[aria-current])::before {
+  background: var(--mdr-accent);
+}
+
+.mdr-toc-backdrop {
+  display: none;
+}
+
+/* ---------- Content column ---------- */
+
+.mdr-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.markdown-body {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: var(--mdr-space-7) var(--mdr-space-6) var(--mdr-space-8);
+}
+
+.markdown-body[hidden] {
+  display: none;
+}
+
+.mdr-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  text-align: center;
+}
+
+.mdr-empty-state__text {
+  margin: 0;
+  color: var(--mdr-fg-muted);
+  font-size: 1rem;
+}
+
+/* ---------- Error view ---------- */
+
+.mdr-error {
+  max-width: 480px;
+  margin: 12vh auto 0;
+  padding: var(--mdr-space-6);
+  text-align: center;
+}
+
+.mdr-error[hidden] {
+  display: none;
+}
+
+.mdr-error h1 {
+  margin: 0 0 var(--mdr-space-3);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.mdr-error p {
+  margin: 0 0 var(--mdr-space-3);
+  color: var(--mdr-fg-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+#mdr-error-path {
+  display: inline-block;
+  font-family: var(--mdr-font-code);
+  font-size: 0.8125rem;
+  color: var(--mdr-fg);
+  background: var(--mdr-bg-subtle);
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-sm);
+  padding: var(--mdr-space-2) var(--mdr-space-3);
+  word-break: break-all;
+  user-select: text;
+  max-width: 100%;
+}
+
+#mdr-error-retry {
+  margin-top: var(--mdr-space-3);
+  padding: var(--mdr-space-2) var(--mdr-space-5);
+  border: 1px solid var(--mdr-accent);
+  border-radius: var(--mdr-radius-sm);
+  background: var(--mdr-accent);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+#mdr-error-retry:hover {
+  filter: brightness(1.08);
+}
+
+/* ---------- Scrollbars (thin, overlay-style) ---------- */
+
+.mdr-toc,
+.mdr-main {
+  scrollbar-width: thin;
+  scrollbar-color: var(--mdr-border) transparent;
+}
+
+.mdr-toc::-webkit-scrollbar,
+.mdr-main::-webkit-scrollbar {
+  width: 10px;
+}
+
+.mdr-toc::-webkit-scrollbar-track,
+.mdr-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mdr-toc::-webkit-scrollbar-thumb,
+.mdr-main::-webkit-scrollbar-thumb {
+  background-color: var(--mdr-border);
+  border-radius: var(--mdr-radius-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.mdr-toc::-webkit-scrollbar-thumb:hover,
+.mdr-main::-webkit-scrollbar-thumb:hover {
+  background-color: var(--mdr-fg-muted);
+}
+
+/* ---------- Focus ---------- */
+
+:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 2px;
+  border-radius: var(--mdr-radius-sm);
+}
+
+/* ---------- Reduced motion ---------- */
+
+/* Scoped to the app chrome we actually animate — never `*` and never anything inside
+   `.markdown-body`. Mermaid (and other WP8 content enhancers) lay out diagrams using
+   real CSS transitions on elements it renders inside `.markdown-body`; a blanket
+   `* { transition-duration: 0.01ms !important }` collapses those to effectively zero
+   duration mid-layout and corrupts the result (tiny, unreadable flowchart boxes) even
+   though the user only asked to reduce *our UI's* motion, not the document's diagrams. */
+@media (prefers-reduced-motion: reduce) {
+  .mdr-toc,
+  .mdr-toc-backdrop,
+  .mdr-icon-button,
+  .mdr-toc-link,
+  #mdr-error-retry {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- Narrow viewport: TOC becomes an overlay drawer ---------- */
+
+@media (max-width: 899px) {
+  .mdr-toc {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    width: min(85vw, 320px);
+    display: flex;
+    box-shadow: var(--mdr-shadow-lg);
+    transform: translateX(-100%);
+    transition: transform var(--mdr-duration-base) var(--mdr-easing);
+  }
+
+  .mdr-toc:not(.mdr-toc--closed) {
+    transform: translateX(0);
+  }
+
+  .mdr-toc--closed {
+    display: flex;
+    box-shadow: none; /* off-screen, but its shadow would still bleed onto the content edge */
+  }
+
+  .mdr-toc-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: var(--mdr-overlay);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--mdr-duration-base) var(--mdr-easing);
+  }
+
+  .mdr-toc-backdrop:not([hidden]) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* ---------- Large documents: cut expensive effects ---------- */
+
+html.mdr-large .mdr-toc,
+html.mdr-large .mdr-toc-backdrop,
+html.mdr-large .mdr-icon-button,
+html.mdr-large .mdr-toc-link {
+  transition: none;
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://app.mdreader.example; style-src https://app.mdreader.example 'unsafe-inline'; img-src https://app.mdreader.example https://doc.mdreader.example https: data:; font-src https://app.mdreader.example data:; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'">
+  <link rel="icon" href="data:,">                  <!-- avoids a favicon.ico 404 (seen in probe logs) -->
+  <link rel="stylesheet" href="css/app.css">
+  <script src="js/theme-init.js"></script>          <!-- classic, sync: ?theme= → data-theme (no flash) -->
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div id="mdr-banner" class="mdr-banner" role="status" hidden></div>
+  <div class="mdr-layout">
+    <nav id="mdr-toc" class="mdr-toc" aria-label="Table of contents">
+      <div class="mdr-toc-header"><span>Contents</span><button id="mdr-toc-close" class="mdr-icon-button" aria-label="Hide contents"></button></div>
+      <ol id="mdr-toc-list" class="mdr-toc-list"></ol>
+    </nav>
+    <div id="mdr-toc-backdrop" class="mdr-toc-backdrop" hidden></div>
+    <main id="mdr-main" class="mdr-main">
+      <article id="mdr-content" class="markdown-body"></article>
+      <section id="mdr-error" class="mdr-error" hidden>
+        <h1 id="mdr-error-title"></h1><p id="mdr-error-message"></p><p id="mdr-error-path"></p>
+        <button id="mdr-error-retry">Try again</button>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

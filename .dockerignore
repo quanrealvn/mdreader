@@ -1,0 +1,24 @@
+# Build context for the web version's Dockerfile: everything is excluded, then only what the build needs is let back
+# in (the repo also holds the Windows app, its installer and the VS Code extension).
+*
+
+!Directory.Build.props
+!Directory.Packages.props
+!global.json
+!MdReader.slnx
+!src
+!web
+!webapp
+
+# Never send build outputs, IDE state or tooling folders from inside the allowed paths.
+**/bin
+**/obj
+**/artifacts
+**/output
+**/node_modules
+**/.vs
+**/.vscode
+**/.idea
+**/.git
+**/*.user
+**/*.swp

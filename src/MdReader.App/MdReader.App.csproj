@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>MdReader</AssemblyName>
+    <RootNamespace>MdReader.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\MdReader.ico</ApplicationIcon>
+    <StartupObject>MdReader.App.Program</StartupObject>
+    <!-- App.xaml is compiled as a Page; Program.Main creates the App (ARCHITECTURE §3.2). -->
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <!-- Interop/NativeMethods.cs uses [LibraryImport]; its generated marshalling code requires unsafe blocks (SYSLIB1062). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MdReader.Core\MdReader.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Web assets live at the repo root and are copied to <output>\web (LinkBase is honored outside the project cone). -->
+    <Content Include="..\..\web\**\*" LinkBase="web" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

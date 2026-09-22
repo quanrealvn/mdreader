@@ -1,0 +1,186 @@
+/* print.css — §10 print rules. Forces the light palette, hides chrome (TOC, banner,
+   code copy buttons) and avoids awkward page breaks. Applies both to real printing
+   (`@media print`) and to the in-app print preview the host drives via the `printMode`
+   message (`:root[data-print]`), which main.js sets before Mermaid re-renders light and
+   before invoking the OS print/PDF action. */
+
+@media print {
+  :root {
+    color-scheme: light;
+    --mdr-bg: #FFFFFF;
+    --mdr-fg: #1F2328;
+    --mdr-fg-muted: #59636E;
+    --mdr-border: #D1D9E0;
+    --mdr-bg-subtle: #F6F8FA;
+    --mdr-accent: #0969DA;
+    --mdr-alert-note: #0969DA;
+    --mdr-alert-tip: #1A7F37;
+    --mdr-alert-important: #8250DF;
+    --mdr-alert-warning: #9A6700;
+    --mdr-alert-caution: #CF222E;
+  }
+
+  /* Classic's §14 role tokens are plain `var(--mdr-fg)`/`var(--mdr-border)`/…
+     references (tokens.css), so they pick up the light values forced above
+     automatically — no extra rule needed. Colorful's role tokens are literal
+     per-theme hex, so a page printed while the app is in dark mode would
+     otherwise keep dark-mode hues (some of which don't clear 4.5:1 on white,
+     e.g. the dark heading-blue is ~3:1). Force the already-verified,
+     print-safe Light+ colorful values instead — this keeps print colorful
+     when the reader is set to Colorful and ink-friendly either way. */
+  :root:not([data-style="classic"]) {
+    --mdr-h1: #0451A5;
+    --mdr-h2: #AF00DB;
+    --mdr-h3: #267F99;
+    --mdr-h4: #795E26;
+    --mdr-h5: #A31515;
+    --mdr-h6: #001080;
+    --mdr-strong: #AF00DB;
+    --mdr-em: #008000;
+    --mdr-del: #CF222E;
+    --mdr-code-fg: #A31515;
+    --mdr-code-bg: #EFE6E8;
+    --mdr-quote-fg: #008000;
+    --mdr-quote-border: #008000;
+    --mdr-list-marker: #0000FF;
+    --mdr-link: #0969DA;
+    --mdr-table-head-fg: #1B5E73;
+    --mdr-hr: #ABB2E6;
+  }
+
+  body {
+    height: auto;
+    overflow: visible;
+    background: #FFFFFF;
+  }
+
+  .mdr-layout {
+    display: block;
+  }
+
+  .mdr-banner,
+  .mdr-toc,
+  .mdr-toc-backdrop,
+  .mdr-code-toolbar {
+    display: none !important;
+  }
+
+  .mdr-main {
+    overflow: visible;
+    height: auto;
+  }
+
+  .markdown-body {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Top-level task-list checkboxes are positioned with a `margin-left: -1.6em`
+     pull (markdown.css) that borrows its "gutter" from .markdown-body's own
+     left padding — zeroed above for print. Without this, the pull lands at a
+     negative x and the checkbox falls off the page edge entirely (nested task
+     lists are unaffected: they already carry their own `padding-left: 1.5em`,
+     independent of the article's padding). Give the top-level list back just
+     enough room to stay self-contained. */
+  .markdown-body ul.contains-task-list {
+    padding-left: 1.6em;
+  }
+
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  pre,
+  table,
+  figure,
+  .markdown-alert {
+    break-inside: avoid;
+  }
+}
+
+:root[data-print] {
+  color-scheme: light;
+  --mdr-bg: #FFFFFF;
+  --mdr-fg: #1F2328;
+  --mdr-fg-muted: #59636E;
+  --mdr-border: #D1D9E0;
+  --mdr-bg-subtle: #F6F8FA;
+  --mdr-accent: #0969DA;
+  --mdr-alert-note: #0969DA;
+  --mdr-alert-tip: #1A7F37;
+  --mdr-alert-important: #8250DF;
+  --mdr-alert-warning: #9A6700;
+  --mdr-alert-caution: #CF222E;
+}
+
+/* See the @media print rule above: same fix, for the in-app print preview
+   (and the real print path, which sets [data-print] before invoking OS
+   print — this is the rule with matching specificity to tokens.css's
+   `:root[data-theme="dark"]…` role-token rules, so it's the one that
+   actually wins the cascade for a dark-mode print). */
+:root[data-print]:not([data-style="classic"]) {
+  --mdr-h1: #0451A5;
+  --mdr-h2: #AF00DB;
+  --mdr-h3: #267F99;
+  --mdr-h4: #795E26;
+  --mdr-h5: #A31515;
+  --mdr-h6: #001080;
+  --mdr-strong: #AF00DB;
+  --mdr-em: #008000;
+  --mdr-del: #CF222E;
+  --mdr-code-fg: #A31515;
+  --mdr-code-bg: #EFE6E8;
+  --mdr-quote-fg: #008000;
+  --mdr-quote-border: #008000;
+  --mdr-list-marker: #0000FF;
+  --mdr-link: #0969DA;
+  --mdr-table-head-fg: #1B5E73;
+  --mdr-hr: #ABB2E6;
+}
+
+:root[data-print] body {
+  height: auto;
+  overflow: visible;
+  background: #FFFFFF;
+}
+
+:root[data-print] .mdr-layout {
+  display: block;
+}
+
+:root[data-print] .mdr-banner,
+:root[data-print] .mdr-toc,
+:root[data-print] .mdr-toc-backdrop,
+:root[data-print] .mdr-code-toolbar {
+  display: none !important;
+}
+
+:root[data-print] .mdr-main {
+  overflow: visible;
+  height: auto;
+}
+
+:root[data-print] .markdown-body {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* See the @media print rule above: same fix, for the in-app print preview. */
+:root[data-print] .markdown-body ul.contains-task-list {
+  padding-left: 1.6em;
+}
+
+:root[data-print] pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+:root[data-print] pre,
+:root[data-print] table,
+:root[data-print] figure,
+:root[data-print] .markdown-alert {
+  break-inside: avoid;
+}

@@ -1,0 +1,40 @@
+<!--
+  Document tabs (§4.11): a ListBox (SelectionItem pattern for UI tests) over MainViewModel.Tabs, horizontally scrollable with
+  edge scroll buttons when the tabs overflow. DataContext = MainViewModel (inherited from MainWindow).
+  Tab visuals live in Themes/Controls.xaml (TabItemStyle).
+-->
+<UserControl x:Class="MdReader.App.Views.TabStrip"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="False">
+    <ListBox x:Name="TabList"
+             AutomationProperties.AutomationId="TabStrip"
+             AutomationProperties.Name="Open documents"
+             ItemsSource="{Binding Tabs}"
+             SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
+             ItemContainerStyle="{StaticResource TabItemStyle}"
+             SelectionMode="Single"
+             Background="Transparent"
+             BorderThickness="0"
+             Padding="0"
+             Focusable="False"
+             KeyboardNavigation.DirectionalNavigation="Cycle"
+             KeyboardNavigation.TabNavigation="Once"
+             VirtualizingPanel.IsVirtualizing="False"
+             PreviewMouseWheel="OnPreviewMouseWheel"
+             PreviewMouseUp="OnPreviewMouseUp"
+             SelectionChanged="OnSelectionChanged">
+        <ListBox.Template>
+            <ControlTemplate TargetType="ListBox">
+                <ScrollViewer x:Name="PART_Scroller" Style="{StaticResource TabScrollViewerStyle}">
+                    <ItemsPresenter />
+                </ScrollViewer>
+            </ControlTemplate>
+        </ListBox.Template>
+        <ListBox.ItemsPanel>
+            <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+    </ListBox>
+</UserControl>

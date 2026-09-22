@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MdReader.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+    <PackageReference Include="HtmlSanitizer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MdReader.Core.Tests" />
+  </ItemGroup>
+
+</Project>

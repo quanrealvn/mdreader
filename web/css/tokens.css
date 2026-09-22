@@ -1,0 +1,175 @@
+/* tokens.css — design tokens: palette (§10), fonts, spacing, radius, shadows.
+   WP8 adds content-specific variables (markdown/code/alerts) in its own files. */
+
+:root {
+  /* Font stacks (§10) */
+  --mdr-font-text: -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif, "Segoe UI Emoji";
+  --mdr-font-code: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+
+  /* Spacing scale */
+  --mdr-space-1: 4px;
+  --mdr-space-2: 8px;
+  --mdr-space-3: 12px;
+  --mdr-space-4: 16px;
+  --mdr-space-5: 24px;
+  --mdr-space-6: 32px;
+  --mdr-space-7: 48px;
+  --mdr-space-8: 64px;
+
+  /* Radius scale */
+  --mdr-radius-sm: 6px;
+  --mdr-radius-md: 8px;
+  --mdr-radius-lg: 12px;
+  --mdr-radius-full: 999px;
+
+  /* Shadows */
+  --mdr-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --mdr-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.14);
+  --mdr-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.24);
+
+  /* Motion */
+  --mdr-duration-fast: 120ms;
+  --mdr-duration-base: 200ms;
+  --mdr-easing: cubic-bezier(0.2, 0, 0, 1);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --mdr-bg: #FFFFFF;
+  --mdr-fg: #1F2328;
+  --mdr-fg-muted: #59636E;
+  --mdr-border: #D1D9E0;
+  --mdr-bg-subtle: #F6F8FA;
+  --mdr-accent: #0969DA;
+
+  --mdr-alert-note: #0969DA;
+  --mdr-alert-tip: #1A7F37;
+  --mdr-alert-important: #8250DF;
+  --mdr-alert-warning: #9A6700;
+  --mdr-alert-caution: #CF222E;
+
+  --mdr-overlay: rgba(31, 35, 40, 0.5);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --mdr-bg: #0D1117;
+  --mdr-fg: #E6EDF3;
+  --mdr-fg-muted: #9198A1;
+  --mdr-border: #3D444D;
+  --mdr-bg-subtle: #151B23;
+  --mdr-accent: #4493F8;
+
+  --mdr-alert-note: #4493F8;
+  --mdr-alert-tip: #3FB950;
+  --mdr-alert-important: #AB7DF8;
+  --mdr-alert-warning: #D29922;
+  --mdr-alert-caution: #F85149;
+
+  --mdr-overlay: rgba(1, 4, 9, 0.6);
+}
+
+/* ---------------------------------------------------------------------- */
+/* §14 reading styles — semantic role variables, per theme × style.       */
+/*                                                                        */
+/* Classic (data-style="classic") reproduces the pre-M9 GitHub-like look  */
+/* exactly: every role below is a plain reference to an existing §10     */
+/* base token, so it inherits any later override of that base token      */
+/* (e.g. print.css forcing the light palette) automatically.             */
+/*                                                                        */
+/* Colorful (default — matches when data-style is absent or unrecognized, */
+/* via `:not([data-style="classic"])`) takes its hues from VS Code's      */
+/* Dark+/Light+ Markdown and token colors: one hue per heading level,     */
+/* string-orange for inline code, comment-green for emphasis/quotes,     */
+/* keyword-purple for strong, list-punctuation blue for markers. Every    */
+/* text role clears 4.5:1 contrast on its background — see the contrast  */
+/* table in the WP9 commit report.                                       */
+/* ---------------------------------------------------------------------- */
+
+:root[data-theme="light"][data-style="classic"] {
+  --mdr-h1: var(--mdr-fg);
+  --mdr-h2: var(--mdr-fg);
+  --mdr-h3: var(--mdr-fg);
+  --mdr-h4: var(--mdr-fg);
+  --mdr-h5: var(--mdr-fg);
+  --mdr-h6: var(--mdr-fg-muted);
+  --mdr-strong: var(--mdr-fg);
+  --mdr-em: var(--mdr-fg);
+  --mdr-del: var(--mdr-fg-muted);
+  --mdr-code-fg: var(--mdr-fg);
+  --mdr-code-bg: var(--mdr-bg-subtle);
+  --mdr-quote-fg: var(--mdr-fg-muted);
+  --mdr-quote-border: var(--mdr-border);
+  --mdr-list-marker: var(--mdr-fg-muted);
+  --mdr-link: var(--mdr-accent);
+  --mdr-table-head-fg: var(--mdr-fg);
+  --mdr-hr: var(--mdr-border);
+}
+
+:root[data-theme="light"]:not([data-style="classic"]) {
+  /* VS Code Light+: blue #0451A5, purple #AF00DB, teal #267F99,
+     function-brown #795E26, string-red #A31515, variable-navy #001080. */
+  --mdr-h1: #0451A5;
+  --mdr-h2: #AF00DB;
+  --mdr-h3: #267F99;
+  --mdr-h4: #795E26;
+  --mdr-h5: #A31515;
+  --mdr-h6: #001080;
+  --mdr-strong: #AF00DB;
+  --mdr-em: #008000;
+  --mdr-del: #CF222E;
+  --mdr-code-fg: #A31515;
+  --mdr-code-bg: #EFE6E8;
+  --mdr-quote-fg: #008000;
+  --mdr-quote-border: #008000;
+  --mdr-list-marker: #0000FF;
+  --mdr-link: var(--mdr-accent);
+  --mdr-table-head-fg: #1B5E73;
+  --mdr-hr: #ABB2E6;
+}
+
+:root[data-theme="dark"][data-style="classic"] {
+  --mdr-h1: var(--mdr-fg);
+  --mdr-h2: var(--mdr-fg);
+  --mdr-h3: var(--mdr-fg);
+  --mdr-h4: var(--mdr-fg);
+  --mdr-h5: var(--mdr-fg);
+  --mdr-h6: var(--mdr-fg-muted);
+  --mdr-strong: var(--mdr-fg);
+  --mdr-em: var(--mdr-fg);
+  --mdr-del: var(--mdr-fg-muted);
+  --mdr-code-fg: var(--mdr-fg);
+  --mdr-code-bg: var(--mdr-bg-subtle);
+  --mdr-quote-fg: var(--mdr-fg-muted);
+  --mdr-quote-border: var(--mdr-border);
+  --mdr-list-marker: var(--mdr-fg-muted);
+  --mdr-link: var(--mdr-accent);
+  --mdr-table-head-fg: var(--mdr-fg);
+  --mdr-hr: var(--mdr-border);
+}
+
+:root[data-theme="dark"]:not([data-style="classic"]) {
+  /* VS Code Dark+: heading-blue #569CD6, keyword-purple #C586C0,
+     type-teal #4EC9B0, function-yellow #DCDCAA, string-orange #CE9178,
+     variable light-blue #9CDCFE, comment-green #6A9955, list-punctuation
+     blue #6796E6. */
+  --mdr-h1: #569CD6;
+  --mdr-h2: #C586C0;
+  --mdr-h3: #4EC9B0;
+  --mdr-h4: #DCDCAA;
+  --mdr-h5: #CE9178;
+  --mdr-h6: #9CDCFE;
+  --mdr-strong: #C586C0;
+  --mdr-em: #6A9955;
+  --mdr-del: #F85149;
+  --mdr-code-fg: #CE9178;
+  --mdr-code-bg: #28272C;
+  --mdr-quote-fg: #6A9955;
+  --mdr-quote-border: #6A9955;
+  --mdr-list-marker: #6796E6;
+  --mdr-link: var(--mdr-accent);
+  --mdr-table-head-fg: #4EC9B0;
+  --mdr-hr: #485973;
+}

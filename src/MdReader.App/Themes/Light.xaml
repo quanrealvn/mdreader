@@ -1,0 +1,41 @@
+<!--
+  Light palette (GitHub Primer, ARCHITECTURE §10). Merged at index 0 of Application.Resources.MergedDictionaries and swapped
+  with Dark.xaml by ThemeService. Every key here MUST also exist in Dark.xaml. All chrome references these via DynamicResource.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Contract keys (§10) -->
+    <SolidColorBrush x:Key="Brush.Document.Background" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Foreground" Color="#1F2328" />
+    <SolidColorBrush x:Key="Brush.Foreground.Muted" Color="#59636E" />
+    <SolidColorBrush x:Key="Brush.Border" Color="#D1D9E0" />
+    <SolidColorBrush x:Key="Brush.Chrome.Background" Color="#F6F8FA" />
+    <SolidColorBrush x:Key="Brush.Accent" Color="#0969DA" />
+    <SolidColorBrush x:Key="Brush.Tab.Active.Background" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Tab.Hover.Background" Color="#EAEEF2" />
+    <SolidColorBrush x:Key="Brush.Button.Hover.Background" Color="#1A818B98" />
+    <SolidColorBrush x:Key="Brush.Button.Pressed.Background" Color="#2E818B98" />
+    <SolidColorBrush x:Key="Brush.FindBar.Background" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Toast.Background" Color="#1F2328" />
+    <SolidColorBrush x:Key="Brush.Toast.Foreground" Color="#FFFFFF" />
+
+    <!-- Additional chrome keys (WP5) -->
+    <SolidColorBrush x:Key="Brush.Foreground.Disabled" Color="#818B98" />
+    <SolidColorBrush x:Key="Brush.Border.Subtle" Color="#E5E9ED" />
+    <SolidColorBrush x:Key="Brush.Button.Checked.Background" Color="#1F0969DA" />
+    <SolidColorBrush x:Key="Brush.Accent.Emphasis" Color="#0969DA" />
+    <SolidColorBrush x:Key="Brush.Accent.Emphasis.Hover" Color="#0860CA" />
+    <SolidColorBrush x:Key="Brush.Accent.Emphasis.Pressed" Color="#0757BA" />
+    <SolidColorBrush x:Key="Brush.Accent.Foreground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Warning" Color="#9A6700" />
+    <SolidColorBrush x:Key="Brush.Danger" Color="#CF222E" />
+    <SolidColorBrush x:Key="Brush.Menu.Background" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Menu.Border" Color="#D1D9E0" />
+    <SolidColorBrush x:Key="Brush.ToolTip.Background" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.Input.Background" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Brush.ScrollBar.Thumb" Color="#80818B98" />
+    <SolidColorBrush x:Key="Brush.ScrollBar.Thumb.Hover" Color="#B3818B98" />
+    <SolidColorBrush x:Key="Brush.Illustration.Background" Color="#EEF3F9" />
+
+</ResourceDictionary>

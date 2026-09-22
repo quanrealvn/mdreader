@@ -1,0 +1,574 @@
+using System.Globalization;
+using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
+using MdReader.App.Documents;
+using MdReader.App.ViewModels;
+using MdReader.Core.Diagnostics;
+using MdReader.Core.Documents;
+using MdReader.Core.Protocol;
+using MdReader.Core.Settings;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
+
+namespace MdReader.App.Views;
+
+/// <summary>
+/// View of one document tab (ARCHITECTURE §4.10–§4.12). Owns the tab's WebView2 and its <see cref="WebViewBridge"/>, the
+/// find bar, zoom and theme plumbing, and the automation surface (<c>DocumentView</c>: Name = full path, ItemStatus =
+/// loading / rendered:&lt;version&gt; / error:&lt;kind&gt;).
+/// </summary>
+/// <remarks>
+/// The WebView2 control is created once and never re-parented. It is replaced by a new control (and bridge) only to
+/// recover, from the WPF error's "Try again", after a failed initialization or after the browser process exited — both
+/// leave the old control unusable.
+/// </remarks>
+public partial class DocumentView : UserControl
+{
+    private const string Category = "DocumentView";
+    private const double ZoomEpsilon = 0.001;
+    private const string RestartRequiredMessage = "Restart MdReader to continue.";
+
+    private readonly DocumentTabViewModel? _tab;
+    private WebView2? _webView;
+    private WebViewBridge? _bridge;
+    private Window? _window;
+    private bool _initStarted;
+    private bool _initializing;
+    private bool _webViewInitialized;
+    private HostRecovery _recovery;
+    private bool _browserProcessLost;   // set by a browser-process exit; cleared by a successful re-creation
+    private bool _disposed;
+
+    /// What "Try again" on the WPF error does.
+    private enum HostRecovery
+    {
+        None,               // nothing can recover inside this process: Retry disabled, "Restart MdReader to continue."
+        Renavigate,         // the CoreWebView2 is alive: reload the page
+        RecreateWebView,    // the control is unusable: build a new WebView2 + bridge with the shared environment
+    }
+
+    /// Designer / XAML only: a view without a tab shows nothing.
+    public DocumentView()
+    {
+        InitializeComponent();
+    }
+
+    internal DocumentView(DocumentTabViewModel tab)
+        : this()
+    {
+        _tab = tab;
+        DocumentViewServices services = tab.ViewServices;
+        AutomationProperties.SetName(this, tab.FilePath);
+        UpdateItemStatus();
+
+        CreateWebView();
+        FindBarControl.Attach(() => _bridge?.Core, FocusWebView, services.Status, services.Log);
+
+        tab.Session.StateChanged += OnSessionStateChanged;
+        services.Theme.EffectiveThemeChanged += OnEffectiveThemeChanged;
+        services.Settings.Changed += OnSettingsChanged;
+        Loaded += OnLoaded;
+        IsVisibleChanged += OnIsVisibleChanged;
+
+        // handledEventsToo: F3/Esc must reach the find bar even if the window-level shortcut router marked them handled.
+        AddHandler(PreviewKeyDownEvent, new KeyEventHandler(OnPreviewKeyDownInView), handledEventsToo: true);
+
+        tab.AttachView(this);
+    }
+
+    /// Ctrl+F (deferred by the keyboard router).
+    internal void ShowFind()
+    {
+        if (!_disposed && _tab is not null)
+        {
+            FindBarControl.Open();
+        }
+    }
+
+    internal void StopFind()
+    {
+        if (_tab is not null)
+        {
+            FindBarControl.Close(focusWebView: false);
+        }
+    }
+
+    /// Last step of the tab's Dispose (§4.11): after the find session and the DocumentSession.
+    internal void DisposeWebView()
+    {
+        if (_disposed || _tab is null)
+        {
+            return;
+        }
+
+        _disposed = true;
+        DocumentViewServices services = _tab.ViewServices;
+        _tab.Session.StateChanged -= OnSessionStateChanged;
+        services.Theme.EffectiveThemeChanged -= OnEffectiveThemeChanged;
+        services.Settings.Changed -= OnSettingsChanged;
+        Loaded -= OnLoaded;
+        IsVisibleChanged -= OnIsVisibleChanged;
+        RemoveHandler(PreviewKeyDownEvent, new KeyEventHandler(OnPreviewKeyDownInView));
+        if (_window is not null)
+        {
+            _window.Activated -= OnWindowActivated;
+            _window = null;
+        }
+
+        DestroyWebView(detachSession: false);   // the session is already disposed
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // WebView lifetime
+
+    private void CreateWebView()
+    {
+        DocumentViewServices services = _tab!.ViewServices;
+        var webView = new WebView2();
+        AutomationProperties.SetAutomationId(webView, "WebView");
+
+        // Before the controller exists, so the first frame already has the page background (no white flash).
+        WebViewSecurity.ApplyTheme(webView, null, services.Theme.EffectiveTheme, services.Log);
+        webView.AllowExternalDrop = true;
+        webView.ZoomFactor = services.Settings.Current.Zoom;
+        webView.ZoomFactorChanged += OnZoomFactorChanged;
+        webView.GotFocus += OnWebViewGotFocus;
+
+        var bridge = new WebViewBridge(webView, services.Theme, services.Settings, services.Paths, services.Perf, services.Log, services.Time);
+        bridge.HostFailed += OnBridgeHostFailed;
+
+        _webView = webView;
+        _bridge = bridge;
+        _webViewInitialized = false;
+        WebViewHost.Children.Add(webView);
+    }
+
+    private void DestroyWebView(bool detachSession)
+    {
+        FindBarControl.ResetSession();   // its CoreWebView2Find dies with the control
+        if (_bridge is { } bridge)
+        {
+            _bridge = null;
+            bridge.HostFailed -= OnBridgeHostFailed;
+            if (detachSession)
+            {
+                _tab?.Session.Detach(bridge);
+            }
+
+            bridge.Dispose();
+        }
+
+        if (_webView is { } webView)
+        {
+            _webView = null;
+            webView.ZoomFactorChanged -= OnZoomFactorChanged;
+            webView.GotFocus -= OnWebViewGotFocus;
+            try
+            {
+                webView.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _tab?.ViewServices.Log.Write(AppLogLevel.Warning, Category, "Disposing the WebView2 control failed.", ex);
+            }
+
+            WebViewHost.Children.Remove(webView);
+        }
+
+        _webViewInitialized = false;
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_disposed || _tab is null)
+        {
+            return;
+        }
+
+        AttachToWindow();
+
+        // Loaded can fire again (e.g. after the host is re-templated); the WebView is initialized exactly once here.
+        if (_initStarted)
+        {
+            return;
+        }
+
+        _initStarted = true;
+        await InitializeWebViewAsync();
+    }
+
+    private async Task InitializeWebViewAsync()
+    {
+        if (_initializing || _disposed || _tab is null || _bridge is null)
+        {
+            return;
+        }
+
+        _initializing = true;
+        DocumentTabViewModel tab = _tab;
+        DocumentViewServices services = tab.ViewServices;
+        WebViewBridge bridge = _bridge;
+        try
+        {
+            CoreWebView2Environment environment = await services.Environment.GetAsync();
+            string resourceRoot = await tab.Session.ResourceRootTask;
+            if (_disposed || !ReferenceEquals(bridge, _bridge))
+            {
+                return;
+            }
+
+            await bridge.InitializeAsync(environment, resourceRoot);
+            if (_disposed || !ReferenceEquals(bridge, _bridge))
+            {
+                return;
+            }
+
+            _webViewInitialized = true;
+            _browserProcessLost = false;
+            tab.Session.Attach(bridge);
+            if (IsVisible)
+            {
+                FocusWebViewDeferred();
+            }
+        }
+        catch (Exception ex) when (!_disposed)
+        {
+            services.Log.Write(AppLogLevel.Error, Category, $"Couldn't initialize the WebView for {tab.FilePath}.", ex);
+
+            // A failed initialization leaves the control unusable: a faulted EnsureCoreWebView2Async can't be retried
+            // on it, and a half-initialized bridge refuses a second InitializeAsync. Drop both; "Try again" builds new
+            // ones. If this was already the attempt to recover from a dead browser process, give up inside this process.
+            DestroyWebView(detachSession: true);
+            ShowHostError(DocumentErrorKind.RenderFailed, ex.Message,
+                _browserProcessLost ? HostRecovery.None : HostRecovery.RecreateWebView);
+        }
+        catch (Exception ex)
+        {
+            services.Log.Write(AppLogLevel.Debug, Category, "WebView initialization ended because the tab was closed.", ex);
+        }
+        finally
+        {
+            _initializing = false;
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // WPF error for a page that can't be shown
+
+    private void OnBridgeHostFailed(object? sender, WebViewHostFailedEventArgs e)
+    {
+        if (!ReferenceEquals(sender, _bridge))
+        {
+            return;
+        }
+
+        if (e.RequiresNewWebView)
+        {
+            _browserProcessLost = true;
+            ShowHostError(e.Kind, e.Detail, HostRecovery.RecreateWebView);
+        }
+        else
+        {
+            ShowHostError(e.Kind, e.Detail, HostRecovery.Renavigate);
+        }
+    }
+
+    private void ShowHostError(DocumentErrorKind kind, string detail, HostRecovery recovery)
+    {
+        if (_disposed || _tab is null)
+        {
+            return;
+        }
+
+        string path = _tab.FilePath;
+        string title;
+        string message;
+        try
+        {
+            (title, message) = DocumentErrorMessages.For(kind, path, detail);
+        }
+        catch (Exception ex)
+        {
+            _tab.ViewServices.Log.Write(AppLogLevel.Error, Category, "DocumentErrorMessages.For failed.", ex);
+            (title, message) = ("Couldn't display this document", detail);
+        }
+
+        HostErrorTitle.Text = title;
+        HostErrorMessage.Text = string.IsNullOrWhiteSpace(detail) || message.Contains(detail, StringComparison.Ordinal)
+            ? message
+            : $"{message}\n{detail}";
+        HostErrorPath.Text = path;
+        _recovery = recovery;
+        HostErrorRetryButton.IsEnabled = recovery != HostRecovery.None;
+        FindBarControl.Close(focusWebView: false);
+        if (_webView is not null)
+        {
+            _webView.Visibility = Visibility.Hidden;
+        }
+
+        HostErrorPanel.Visibility = Visibility.Visible;
+        _tab.Session.ReportHostError(kind);
+        if (recovery == HostRecovery.None)
+        {
+            _tab.ViewServices.Log.Write(AppLogLevel.Error, Category,
+                $"The WebView can't be recreated after the browser process exited; MdReader has to be restarted ({path}).");
+            _tab.ViewServices.Status.ShowStatus(RestartRequiredMessage);
+        }
+    }
+
+    private async void OnHostErrorRetryClick(object sender, RoutedEventArgs e)
+    {
+        if (_disposed || _tab is null || _initializing || _recovery == HostRecovery.None)
+        {
+            return;
+        }
+
+        HostRecovery recovery = _recovery;
+        HostErrorPanel.Visibility = Visibility.Collapsed;
+        _tab.Session.ClearHostError();
+        if (recovery == HostRecovery.Renavigate && _bridge is { CanRestart: true } bridge)
+        {
+            if (_webView is not null)
+            {
+                _webView.Visibility = Visibility.Visible;
+            }
+
+            bridge.Restart();
+            return;
+        }
+
+        _tab.ViewServices.Log.Write(AppLogLevel.Info, Category, $"Recreating the WebView for {_tab.FilePath}.");
+        DestroyWebView(detachSession: true);
+        CreateWebView();
+        await InitializeWebViewAsync();
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // State, theme, zoom
+
+    private void OnSessionStateChanged(object? sender, EventArgs e) => UpdateItemStatus();
+
+    private void UpdateItemStatus()
+    {
+        if (_tab is null)
+        {
+            return;
+        }
+
+        DocumentSession session = _tab.Session;
+        string status = session.State switch
+        {
+            DocumentSessionState.Error => "error:" + DocumentSession.ToProtocolName(session.ErrorKind ?? DocumentErrorKind.RenderFailed),
+            _ when session.RenderedVersion > 0 => "rendered:" + session.RenderedVersion.ToString(CultureInfo.InvariantCulture),
+            _ => "loading",
+        };
+
+        if (!string.Equals(AutomationProperties.GetItemStatus(this), status, StringComparison.Ordinal))
+        {
+            AutomationProperties.SetItemStatus(this, status);
+        }
+    }
+
+    private void OnEffectiveThemeChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => OnEffectiveThemeChanged(sender, e));
+            return;
+        }
+
+        if (!_disposed && _tab is not null && _webView is not null)
+        {
+            WebViewSecurity.ApplyTheme(_webView, _bridge?.Core, _tab.ViewServices.Theme.EffectiveTheme, _tab.ViewServices.Log);
+        }
+    }
+
+    private void OnSettingsChanged(object? sender, AppSettings settings)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => OnSettingsChanged(sender, settings));
+            return;
+        }
+
+        if (_disposed || _webView is not { } webView)
+        {
+            return;
+        }
+
+        try
+        {
+            // Zoom is global: every tab follows the setting; our own echo (|Δ| < 0.001) is ignored.
+            if (Math.Abs(webView.ZoomFactor - settings.Zoom) >= ZoomEpsilon)
+            {
+                webView.ZoomFactor = settings.Zoom;
+            }
+        }
+        catch (Exception ex)
+        {
+            _tab?.ViewServices.Log.Write(AppLogLevel.Warning, Category, "Applying the zoom setting failed.", ex);
+        }
+    }
+
+    /// Ctrl+wheel inside the page (IsZoomControlEnabled) → persist the global zoom.
+    private void OnZoomFactorChanged(object? sender, EventArgs e)
+    {
+        if (_disposed || _tab is null || sender is not WebView2 webView || !ReferenceEquals(webView, _webView))
+        {
+            return;
+        }
+
+        try
+        {
+            SettingsCoordinator settings = _tab.ViewServices.Settings;
+            double zoom = webView.ZoomFactor;
+            if (Math.Abs(zoom - settings.Current.Zoom) < ZoomEpsilon)
+            {
+                return;
+            }
+
+            double clamped = ZoomLevels.Clamp(zoom);
+            settings.Update(s => s with { Zoom = clamped });
+            if (Math.Abs(webView.ZoomFactor - clamped) >= ZoomEpsilon)
+            {
+                webView.ZoomFactor = clamped;
+            }
+        }
+        catch (Exception ex)
+        {
+            _tab.ViewServices.Log.Write(AppLogLevel.Warning, Category, "Persisting the zoom level failed.", ex);
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Focus, keys, print-mode fallback
+
+    private void AttachToWindow()
+    {
+        Window? window = Window.GetWindow(this);
+        if (ReferenceEquals(window, _window))
+        {
+            return;
+        }
+
+        if (_window is not null)
+        {
+            _window.Activated -= OnWindowActivated;
+        }
+
+        _window = window;
+        if (window is not null)
+        {
+            window.Activated += OnWindowActivated;
+        }
+    }
+
+    private void OnWindowActivated(object? sender, EventArgs e) => NotifyUserInteraction();
+
+    private void OnWebViewGotFocus(object sender, RoutedEventArgs e) => NotifyUserInteraction();
+
+    /// R6: the first focus / activation / key input after a print dialog leaves print mode if the page didn't.
+    private void NotifyUserInteraction()
+    {
+        if (_disposed || _tab is null || !_tab.Session.IsPrintFallbackArmed)
+        {
+            return;
+        }
+
+        // Deferred: this can run inside a synchronous WebView2 callback (focus, accelerator keys) where CoreWebView2
+        // calls fail (§4.12).
+        DocumentSession session = _tab.Session;
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!_disposed)
+            {
+                session.OnUserInteractionAfterPrint();
+            }
+        });
+    }
+
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (e.NewValue is true)
+        {
+            FocusWebViewDeferred();
+        }
+        else
+        {
+            FindBarControl.Close(focusWebView: false);   // switching tabs closes the find bar
+        }
+    }
+
+    /// F3 / Shift+F3 and Esc for the find bar. Keys forwarded from the WebView arrive here while the browser is blocked
+    /// (AcceleratorKeyPressed is synchronous), so the CoreWebView2 work is always deferred (§4.12).
+    private void OnPreviewKeyDownInView(object sender, KeyEventArgs e)
+    {
+        if (_disposed || _tab is null)
+        {
+            return;
+        }
+
+        NotifyUserInteraction();
+        Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+        ModifierKeys modifiers = Keyboard.Modifiers;
+        if (key == Key.F3 && (modifiers & ~ModifierKeys.Shift) == ModifierKeys.None)
+        {
+            e.Handled = true;
+            bool backwards = (modifiers & ModifierKeys.Shift) != 0;
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+            {
+                if (!_disposed)
+                {
+                    FindBarControl.FindFromShortcut(backwards);
+                }
+            });
+        }
+        else if (key == Key.Escape && modifiers == ModifierKeys.None && !e.IsRepeat && FindBarControl.IsOpen)
+        {
+            e.Handled = true;
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+            {
+                if (!_disposed)
+                {
+                    FindBarControl.Close(focusWebView: true);
+                }
+            });
+        }
+    }
+
+    private void FocusWebViewDeferred() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            // Only inside an active window: focusing the WebView of a background window could steal activation.
+            if (!_disposed && _webViewInitialized && IsVisible && !FindBarControl.IsKeyboardFocusWithin
+                && Window.GetWindow(this) is { IsActive: true })
+            {
+                FocusWebView();
+            }
+        });
+
+    private void FocusWebView()
+    {
+        if (_disposed || !_webViewInitialized || _webView is not { Visibility: Visibility.Visible } webView)
+        {
+            return;
+        }
+
+        try
+        {
+            webView.Focus();
+        }
+        catch (Exception ex)
+        {
+            _tab?.ViewServices.Log.Write(AppLogLevel.Debug, Category, "Focusing the WebView failed.", ex);
+        }
+    }
+}
