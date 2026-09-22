@@ -177,6 +177,22 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
         DisposeTab(tab);
     }
 
+    /// Moves an open tab to <paramref name="index"/> (clamped). DocumentHost ignores Move, so no WebView is touched.
+    internal void MoveTab(IDocumentTab tab, int index)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+        _dispatcher.VerifyAccess();
+        var from = _tabs.IndexOf(tab);
+        if (from >= 0)
+        {
+            var to = Math.Clamp(index, 0, _tabs.Count - 1);
+            if (from != to)
+            {
+                _tabs.Move(from, to);
+            }
+        }
+    }
+
     /// Shutdown (§4.11): closes every tab — each Dispose tears down find → session → WebView — while the window and the
     /// browser are still alive, without activating neighbors on the way. Idempotent. UI thread.
     public void CloseAllTabs()

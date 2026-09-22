@@ -18,7 +18,7 @@ namespace MdReader.App;
 
 /// Custom entry point implementing the startup sequence of ARCHITECTURE §6:
 /// mainEntered → CLI (exit 2) → AppPaths → single instance (forward → exit 0) → App + DI + settings → WebView2 environment
-/// → theme + window + placement → open CLI files → Show → pipe server → Application.Run.
+/// → theme + window + placement → reopen the last session + open CLI files → Show → pipe server → Application.Run.
 /// Exit codes (§4.7): 0 ok/forwarded/help, 1 crash, 2 command line, 3 WebView2 unavailable, 4 capture failed.
 public static class Program
 {
@@ -147,6 +147,11 @@ public static class Program
                 theme.ApplySessionOverride(themeOverride);
             }
 
+            // The last session is restored and recorded by the primary instance only (never with --capture, which has no
+            // channel); its files' existence checks run in the background while the window is built.
+            var session = channel is not null ? services.GetRequiredService<SessionService>() : null;
+            session?.BeginRestore();
+
             var window = services.GetRequiredService<MainWindow>();                  // placement restored, DWM attached
             app.MainWindow = window;
 
@@ -154,6 +159,10 @@ public static class Program
             if (capture.IsEnabled)
             {
                 capture.Start(app.Dispatcher);                                          // opens the first file only
+            }
+            else if (session is not null)
+            {
+                session.OpenStartupFiles(options.Files);                                 // saved tabs, then the CLI files
             }
             else
             {
@@ -164,7 +173,7 @@ public static class Program
             // it runs while the window and the browser processes still exist (§4.11).
             var shutdown = new OrderlyShutdown(window, services.GetRequiredService<WindowPlacementService>(),
                                                services.GetRequiredService<SettingsCoordinator>(),
-                                               services.GetRequiredService<MainViewModel>(), log);
+                                               services.GetRequiredService<MainViewModel>(), session, log);
             window.Closing += (_, e) =>
             {
                 if (!e.Cancel)
@@ -325,12 +334,13 @@ public static class Program
     }
 
     /// Shutdown sequence (§4.11), run once, on the UI thread, before WPF destroys the main window: stop serving forwarded
-    /// files → record the window placement → save the settings → close every tab (find → session → WebView). Tearing the
+    /// files → record the window placement → freeze the tab session (so closing the tabs below doesn't empty it) → save the
+    /// settings → close every tab (find → session → WebView). Tearing the
     /// WebViews down here matters on logoff/shutdown and Restart Manager requests: once the session is ending the WebView2
     /// controllers become unusable, and WPF's own window teardown would otherwise still call into them
     /// (CoreWebView2Controller.set_IsVisible → access violation, settings never saved).
     private sealed class OrderlyShutdown(Window window, WindowPlacementService placement, SettingsCoordinator settings,
-                                         MainViewModel tabs, IAppLog log)
+                                         MainViewModel tabs, SessionService? session, IAppLog log)
     {
         private bool _done;
 
@@ -347,6 +357,7 @@ public static class Program
             log.Write(AppLogLevel.Info, Category, $"Shutting down: {reason}");
             Step("stop the pipe server", () => StopForwarding?.Invoke());
             Step("record the window placement", () => placement.Save(window));
+            Step("record the open tabs", () => session?.Freeze());
             Step("save the settings", settings.Flush);
             Step("close the tabs", tabs.CloseAllTabs);
         }

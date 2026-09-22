@@ -93,6 +93,7 @@ public sealed class JsonSettingsStore : ISettingsStore
             ReadingStyle = dto.ReadingStyle ?? defaults.ReadingStyle,
             Window = dto.Window ?? defaults.Window,
             RecentFiles = dto.RecentFiles ?? defaults.RecentFiles,
+            Session = dto.Session ?? defaults.Session,
         };
     }
 

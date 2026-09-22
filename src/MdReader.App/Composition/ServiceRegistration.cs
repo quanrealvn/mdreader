@@ -80,6 +80,7 @@ public static class ServiceRegistration
         services.AddSingleton<WindowActivator>();
         services.AddSingleton<WindowPlacementService>();
         services.AddSingleton<CaptureRunner>();
+        services.AddSingleton<SessionService>();
 
         // Shell
         services.AddSingleton<MainViewModel>();

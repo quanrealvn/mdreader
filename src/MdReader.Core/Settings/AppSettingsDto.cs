@@ -29,4 +29,7 @@ public sealed class AppSettingsDto
 
     public WindowPlacement? Window { get; init; }
     public IReadOnlyList<string>? RecentFiles { get; init; }
+
+    [JsonConverter(typeof(SessionStateSettingConverter))]
+    public SessionState? Session { get; init; }
 }
