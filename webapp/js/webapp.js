@@ -3,7 +3,12 @@
 // documents through POST /api/render and delivers the returned host messages unchanged
 // (except docId/version, which it owns), and answers the page's messages: link, copy,
 // tocVisibilityChanged, retry, log, drop, rendered. It also owns the web-only chrome: the
-// header toolbar, the paste view, file open / drop, and the toast.
+// header toolbar, the tab strip, the paste view, file open / drop, and the toast.
+//
+// Tabs: each tab is one document {id, title, markdown, scrollTop} (plus in-memory-only
+// bookkeeping: docId/version for the protocol, a cached `payload` of host messages so
+// switching tabs never re-fetches, and `view` for whether it's showing paste or reader).
+// Only the active tab is rendered eagerly; others render on first activation.
 //
 // Module-scoped state only (content ids can clobber window properties, §7.3).
 
@@ -11,13 +16,15 @@ import { attachHost, deliver } from "./bridge.js";
 
 const API_URL = "api/render";
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const DOC_ID = 1;
 const UNTITLED = "document.md"; // the title the server's renderer gives a document without an h1
 const APP_NAME = "MdReader";
 const TOAST_MS = 3200;
-const DRAFT_SAVE_MS = 400;
+const SAVE_DEBOUNCE_MS = 400;
 const TEXT_EXTENSIONS = /\.(md|markdown|mdown|mkd|mkdn|mdwn|txt|text)$/i;
+const TOAST_TOO_BIG_TO_KEEP = "Some documents are too large to keep after reload.";
 
+const SESSION_KEY = "mdreader.session.v1";
+// Legacy single-document keys (pre-tabs), migrated once then removed.
 const KEY_DOC = "mdr.web.doc";
 const KEY_NAME = "mdr.web.name";
 const KEY_VIEW = "mdr.web.view";
@@ -35,6 +42,9 @@ const progress = document.getElementById("mdr-web-progress");
 const toastEl = document.getElementById("mdr-web-toast");
 const dropzone = document.getElementById("mdr-web-dropzone");
 const content = document.getElementById("mdr-content");
+const mdrMain = document.getElementById("mdr-main");
+const tabListEl = document.getElementById("mdr-web-tablist");
+const tabAddButton = document.getElementById("mdr-web-tab-add");
 const params = new URLSearchParams(window.location.search);
 const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -55,7 +65,16 @@ function save(key, value) {
     if (value === null || value === undefined) window.localStorage.removeItem(key);
     else window.localStorage.setItem(key, value);
   } catch {
-    // quota exceeded or storage blocked: the document just isn't remembered
+    // quota exceeded or storage blocked
+  }
+}
+
+function trySave(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -64,14 +83,18 @@ function save(key, value) {
 // ---------------------------------------------------------------------------------
 
 let pageReady = false;
-let version = 0;
-let currentText = null; // the document on screen (or being rendered)
-let currentName = null; // file name it came from, if any
-let lastPayload = null; // messages of the last applied render, re-delivered if the page reloads
-let inFlight = null; // AbortController of the running request
+let tabs = [];
+let activeId = null;
+let tabIdCounter = 0;
+let docIdCounter = 0;
+let activityCounter = 0;
+let lastPayload = null; // messages of the last delivered payload, re-delivered if the page reloads
+let pendingScroll = null; // {docId, version, scrollTop} to apply once that render's content phase lands
+let inFlight = null; // AbortController of the running render request
 let tocEntries = 0;
 let toastTimer = 0;
 let draftTimer = 0;
+let saveTimer = 0;
 
 // Theme / style: a query parameter pins them for this visit (screenshots, links); otherwise
 // the saved choice. theme "system" follows prefers-color-scheme.
@@ -86,23 +109,352 @@ function oneOf(value, allowed) {
 }
 
 // ---------------------------------------------------------------------------------
+// tabs
+// ---------------------------------------------------------------------------------
+
+function createTab({ markdown = "", title = "Untitled", name = null, view } = {}) {
+  tabIdCounter += 1;
+  docIdCounter += 1;
+  return {
+    id: "t" + tabIdCounter,
+    docId: docIdCounter,
+    title,
+    markdown,
+    name,
+    scrollTop: 0,
+    payload: null,
+    version: 0,
+    view: view || (markdown.trim().length > 0 ? "reader" : "paste"),
+    lastActive: 0,
+  };
+}
+
+function hydrateTab(raw) {
+  const markdown = typeof raw.markdown === "string" ? raw.markdown : "";
+  const id = typeof raw.id === "string" && raw.id ? raw.id : null;
+  tabIdCounter += 1;
+  docIdCounter += 1;
+  return {
+    id: id || "t" + tabIdCounter,
+    docId: docIdCounter,
+    title: typeof raw.title === "string" && raw.title ? raw.title : "Untitled",
+    markdown,
+    name: typeof raw.name === "string" && raw.name ? raw.name : null,
+    scrollTop: typeof raw.scrollTop === "number" && raw.scrollTop >= 0 ? raw.scrollTop : 0,
+    payload: null,
+    version: 0,
+    view: markdown.trim().length > 0 ? "reader" : "paste",
+    lastActive: 0,
+  };
+}
+
+function getActiveTab() {
+  return tabs.find((t) => t.id === activeId) || null;
+}
+
+function titleFromRender(renderTitle, tab) {
+  if (renderTitle && renderTitle !== UNTITLED) return renderTitle;
+  if (tab.name) return tab.name;
+  return "Untitled";
+}
+
+function webTitle(tab) {
+  if (!tab.title || tab.title === "Untitled") return APP_NAME;
+  return tab.title + " - " + APP_NAME;
+}
+
+function tocEntriesFromPayload(messages) {
+  const renderMsg = messages.find((m) => m.type === "render");
+  return renderMsg && Array.isArray(renderMsg.toc) ? renderMsg.toc.length : 0;
+}
+
+// ---------------------------------------------------------------------------------
 // views
 // ---------------------------------------------------------------------------------
 
 function setView(view) {
   root.setAttribute("data-view", view);
-  save(KEY_VIEW, view);
-  if (view === "paste") {
-    document.title = APP_NAME;
+  if (view === "paste") document.title = APP_NAME;
+}
+
+function leaveActiveTab() {
+  const tab = getActiveTab();
+  if (!tab) return;
+  if (root.getAttribute("data-view") === "paste") {
+    tab.markdown = input.value;
+  } else {
+    tab.scrollTop = mdrMain.scrollTop;
   }
 }
 
-function showPaste({ focus = true } = {}) {
+/** Shows the active tab: paste view for an empty/draft tab, reader view otherwise (rendering it first if needed). */
+function showActiveTab() {
   cancelInFlight();
+  const tab = getActiveTab();
+  if (!tab) return;
+  if (tab.view !== "reader") {
+    setView("paste");
+    input.value = tab.markdown || "";
+    updateCount();
+    return;
+  }
+  if (tab.payload) {
+    setView("reader");
+    lastPayload = tab.payload;
+    tocEntries = tocEntriesFromPayload(tab.payload);
+    updateTocButton();
+    pendingScroll = { docId: tab.docId, version: tab.version, scrollTop: tab.scrollTop };
+    if (pageReady) deliverPayload(tab.payload);
+  } else {
+    renderTab(tab, tab.markdown, { immediateReaderView: true });
+  }
+}
+
+function showPasteForActiveTab({ focus = true } = {}) {
+  cancelInFlight();
+  const tab = getActiveTab();
+  if (tab) {
+    tab.view = "paste";
+    input.value = tab.markdown || "";
+  }
   setView("paste");
   updateCount();
   if (focus) input.focus();
 }
+
+// ---------------------------------------------------------------------------------
+// tab actions
+// ---------------------------------------------------------------------------------
+
+function activateTab(id) {
+  if (!tabs.some((t) => t.id === id)) return;
+  if (id !== activeId) {
+    leaveActiveTab();
+    activeId = id;
+  }
+  const tab = getActiveTab();
+  tab.lastActive = ++activityCounter;
+  showActiveTab();
+  renderTabStrip();
+  scheduleSessionSave();
+}
+
+function newTab() {
+  const tab = createTab({});
+  tabs.push(tab);
+  activateTab(tab.id);
+  input.focus();
+}
+
+function closeTab(id) {
+  const idx = tabs.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+
+  if (tabs.length === 1) {
+    const tab = tabs[0];
+    cancelInFlight();
+    tab.markdown = "";
+    tab.payload = null;
+    tab.title = "Untitled";
+    tab.name = null;
+    tab.view = "paste";
+    tab.scrollTop = 0;
+    activeId = tab.id;
+    showActiveTab();
+    renderTabStrip();
+    scheduleSessionSave();
+    return;
+  }
+
+  const wasActive = id === activeId;
+  tabs.splice(idx, 1);
+  if (wasActive) {
+    const nextIdx = Math.min(idx, tabs.length - 1);
+    activeId = tabs[nextIdx].id;
+    getActiveTab().lastActive = ++activityCounter;
+    showActiveTab();
+  }
+  renderTabStrip();
+  scheduleSessionSave();
+}
+
+function clearActiveTab() {
+  cancelInFlight();
+  const tab = getActiveTab();
+  if (!tab) return;
+  tab.markdown = "";
+  tab.payload = null;
+  tab.title = "Untitled";
+  tab.name = null;
+  tab.view = "paste";
+  input.value = "";
+  updateCount();
+  renderTabStrip();
+  scheduleSessionSave();
+}
+
+// ---------------------------------------------------------------------------------
+// tab strip UI
+// ---------------------------------------------------------------------------------
+
+function renderTabStrip() {
+  tabListEl.textContent = "";
+  let activeEl = null;
+  for (const tab of tabs) {
+    const el = document.createElement("div");
+    el.className = "mdr-web-tab" + (tab.id === activeId ? " is-active" : "");
+    el.setAttribute("role", "tab");
+    el.setAttribute("tabindex", tab.id === activeId ? "0" : "-1");
+    el.setAttribute("aria-selected", String(tab.id === activeId));
+    el.dataset.tabId = tab.id;
+    el.title = tab.title;
+
+    const titleEl = document.createElement("span");
+    titleEl.className = "mdr-web-tab-title";
+    titleEl.textContent = tab.title;
+    el.appendChild(titleEl);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "mdr-web-tab-close";
+    closeBtn.title = "Close tab";
+    closeBtn.setAttribute("aria-label", "Close tab");
+    closeBtn.textContent = "×";
+    el.appendChild(closeBtn);
+
+    tabListEl.appendChild(el);
+    if (tab.id === activeId) activeEl = el;
+  }
+  if (activeEl) activeEl.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+tabListEl.addEventListener("click", (event) => {
+  const tabEl = event.target.closest(".mdr-web-tab");
+  if (!tabEl) return;
+  if (event.target.closest(".mdr-web-tab-close")) {
+    closeTab(tabEl.dataset.tabId);
+  } else {
+    activateTab(tabEl.dataset.tabId);
+  }
+});
+
+tabListEl.addEventListener("auxclick", (event) => {
+  if (event.button !== 1) return; // middle click
+  const tabEl = event.target.closest(".mdr-web-tab");
+  if (!tabEl) return;
+  event.preventDefault();
+  closeTab(tabEl.dataset.tabId);
+});
+
+tabListEl.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  if (event.target.closest(".mdr-web-tab-close")) return; // let the close button's own click handle it
+  const tabEl = event.target.closest(".mdr-web-tab");
+  if (!tabEl) return;
+  event.preventDefault();
+  activateTab(tabEl.dataset.tabId);
+});
+
+tabAddButton.addEventListener("click", () => newTab());
+
+// ---------------------------------------------------------------------------------
+// session persistence (localStorage)
+// ---------------------------------------------------------------------------------
+
+function serializeTab(tab) {
+  return { id: tab.id, title: tab.title, markdown: tab.markdown, scrollTop: tab.scrollTop, name: tab.name || null };
+}
+
+function scheduleSessionSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(persistSession, SAVE_DEBOUNCE_MS);
+}
+
+function persistSession() {
+  clearTimeout(saveTimer);
+  const full = JSON.stringify({ tabs: tabs.map(serializeTab), activeId });
+  if (trySave(SESSION_KEY, full)) return;
+
+  // The full session doesn't fit. Probe with an empty one first: if that also fails,
+  // storage is disabled/blocked rather than merely full, so stay silent (§ save()).
+  if (!trySave(SESSION_KEY, JSON.stringify({ tabs: [], activeId: null }))) return;
+
+  const active = getActiveTab();
+  const priority = active ? [active] : [];
+  for (const t of [...tabs].sort((a, b) => b.lastActive - a.lastActive)) {
+    if (t !== active) priority.push(t);
+  }
+
+  const kept = [];
+  let droppedAny = false;
+  for (const tab of priority) {
+    const candidate = kept.concat([tab]).map(serializeTab);
+    if (trySave(SESSION_KEY, JSON.stringify({ tabs: candidate, activeId }))) {
+      kept.push(tab);
+    } else {
+      droppedAny = true;
+    }
+  }
+
+  if (kept.length === 0) {
+    save(SESSION_KEY, null);
+  } else {
+    const keptIds = new Set(kept.map((t) => t.id));
+    const ordered = tabs.filter((t) => keptIds.has(t.id)).map(serializeTab);
+    trySave(SESSION_KEY, JSON.stringify({ tabs: ordered, activeId }));
+  }
+  if (droppedAny) toast(TOAST_TOO_BIG_TO_KEEP);
+}
+
+function loadSession() {
+  const raw = load(SESSION_KEY);
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw);
+    return data && Array.isArray(data.tabs) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Migrates the pre-tabs single-document keys into a one-tab session, then removes them. */
+function migrateLegacyIfNeeded() {
+  const legacyDoc = load(KEY_DOC);
+  if (legacyDoc === null) return null;
+
+  let migrated = null;
+  if (!load(SESSION_KEY)) {
+    const legacyName = load(KEY_NAME);
+    migrated = {
+      tabs: [{ id: "t1", title: legacyName || "Untitled", markdown: legacyDoc, scrollTop: 0, name: legacyName || null }],
+      activeId: "t1",
+    };
+  }
+  save(KEY_DOC, null);
+  save(KEY_NAME, null);
+  save(KEY_VIEW, null);
+  return migrated;
+}
+
+function initSession() {
+  const migrated = migrateLegacyIfNeeded();
+  const source = migrated || loadSession();
+  if (source && Array.isArray(source.tabs) && source.tabs.length > 0) {
+    tabs = source.tabs.map(hydrateTab);
+    activeId = tabs.some((t) => t.id === source.activeId) ? source.activeId : tabs[0].id;
+  } else {
+    const tab = createTab({});
+    tabs = [tab];
+    activeId = tab.id;
+  }
+  getActiveTab().lastActive = ++activityCounter;
+  if (migrated) persistSession(); // don't lose it if nothing else triggers a save before a reload
+}
+
+window.addEventListener("pagehide", () => {
+  leaveActiveTab();
+  persistSession();
+});
 
 // ---------------------------------------------------------------------------------
 // host -> page messages
@@ -158,32 +510,28 @@ function cancelInFlight() {
 function setBusy(busy) {
   progress.hidden = !busy;
   renderButton.disabled = busy;
-  document.getElementById("mdr-main").setAttribute("aria-busy", String(busy));
+  mdrMain.setAttribute("aria-busy", String(busy));
 }
 
-function webTitle(title) {
-  if (!title || title === UNTITLED) return currentName ? currentName + " - " + APP_NAME : APP_NAME;
-  return title + " - " + APP_NAME;
-}
-
-/** Renders `text` through the API and shows it in the reader view. */
-async function renderText(text, name) {
+/** Renders `text` for `tab` through the API. Caches the result on the tab and, if it's still
+ * the active tab, delivers it and schedules the scroll restore once content phase lands. */
+async function renderTab(tab, text, { immediateReaderView = false } = {}) {
   cancelInFlight();
-  currentText = text;
-  currentName = name || null;
-  save(KEY_DOC, text);
-  save(KEY_NAME, currentName);
+  tab.markdown = text;
 
   const body = JSON.stringify({ markdown: text });
   if (new Blob([body]).size > MAX_BODY_BYTES) {
-    setView("reader");
-    showError(413, null);
+    if (tab.id === activeId) {
+      setView("reader");
+      showError(413, null);
+    }
     return;
   }
 
   const controller = new AbortController();
   inFlight = controller;
   setBusy(true);
+  if (immediateReaderView && tab.id === activeId) setView("reader");
 
   let response;
   let payload = null;
@@ -200,8 +548,10 @@ async function renderText(text, name) {
     if (controller.signal.aborted) return; // superseded or cancelled
     if (inFlight === controller) inFlight = null;
     setBusy(false);
-    setView("reader");
-    showError(0, null);
+    if (tab.id === activeId) {
+      setView("reader");
+      showError(0, null);
+    }
     console.warn("mdr: render request failed", err);
     return;
   }
@@ -209,30 +559,43 @@ async function renderText(text, name) {
   if (inFlight !== controller) return; // superseded while the body was downloading
   inFlight = null;
   setBusy(false);
-  setView("reader");
 
   if (!response.ok || !payload || !Array.isArray(payload.messages) || payload.messages.length === 0) {
-    showError(response.ok ? 500 : response.status, payload);
+    tab.payload = null;
+    if (tab.id === activeId) {
+      setView("reader");
+      showError(response.ok ? 500 : response.status, payload);
+    }
     return;
   }
 
-  // The page owns nothing about versions across requests (the server may restart): number
-  // every render here so each one is newer than the last (§7.1 rule 4).
-  version += 1;
+  // Each tab owns its own docId/version so switching tabs (a render for a different docId)
+  // always applies regardless of version, and re-rendering the same tab always increases (§7.1).
+  tab.version += 1;
   const messages = payload.messages.map((message) => {
     if (message.type === "render" || message.type === "renderPart") {
-      message.docId = DOC_ID;
-      message.version = version;
+      message.docId = tab.docId;
+      message.version = tab.version;
     }
     if (message.type === "render") {
-      message.title = webTitle(message.title);
-      tocEntries = Array.isArray(message.toc) ? message.toc.length : 0;
+      tab.title = titleFromRender(message.title, tab);
+      message.title = webTitle(tab);
     }
     return message;
   });
-  updateTocButton();
-  lastPayload = messages;
-  if (pageReady) deliverPayload(messages);
+  tab.payload = messages;
+  tab.view = "reader";
+
+  if (tab.id === activeId) {
+    setView("reader");
+    lastPayload = messages;
+    tocEntries = tocEntriesFromPayload(messages);
+    updateTocButton();
+    pendingScroll = { docId: tab.docId, version: tab.version, scrollTop: tab.scrollTop };
+    if (pageReady) deliverPayload(messages);
+  }
+  renderTabStrip();
+  scheduleSessionSave();
 }
 
 const ERRORS = {
@@ -266,7 +629,9 @@ function renderFromInput() {
     input.focus();
     return;
   }
-  renderText(text, text === currentText ? currentName : null);
+  const tab = getActiveTab();
+  if (!tab) return;
+  renderTab(tab, text, { immediateReaderView: false });
 }
 
 // ---------------------------------------------------------------------------------
@@ -277,25 +642,49 @@ function isTextFile(file) {
   return TEXT_EXTENSIONS.test(file.name) || (file.type && file.type.startsWith("text/"));
 }
 
-async function openFile(file) {
-  if (!file) return;
-  if (!isTextFile(file)) {
-    toast("Choose a .md, .markdown or .txt file.");
+/** Opens one or more files, each in its own tab (reusing a tab already open with the same
+ * name and content). The first opened file's tab becomes active. */
+async function openFiles(fileList) {
+  const files = Array.from(fileList || []).filter(Boolean);
+  if (files.length === 0) return;
+
+  const valid = [];
+  let hadBadType = false;
+  let hadTooLarge = false;
+  for (const file of files) {
+    if (!isTextFile(file)) {
+      hadBadType = true;
+    } else if (file.size > MAX_BODY_BYTES) {
+      hadTooLarge = true;
+    } else {
+      valid.push(file);
+    }
+  }
+  if (valid.length === 0) {
+    toast(hadBadType ? "Choose a .md, .markdown or .txt file." : "This file is over 2 MB.");
     return;
   }
-  if (file.size > MAX_BODY_BYTES) {
-    toast("This file is over 2 MB.");
-    return;
+
+  let firstTabId = null;
+  for (const file of valid) {
+    let text;
+    try {
+      text = await file.text();
+    } catch (err) {
+      console.warn("mdr: couldn't read the file", err);
+      continue;
+    }
+    let tab = tabs.find((t) => t.name === file.name && t.markdown === text);
+    if (!tab) {
+      tab = createTab({ markdown: text, name: file.name, title: file.name, view: "reader" });
+      tabs.push(tab);
+    }
+    if (firstTabId === null) firstTabId = tab.id;
   }
-  try {
-    const text = await file.text();
-    input.value = text;
-    updateCount();
-    await renderText(text, file.name);
-  } catch (err) {
-    console.warn("mdr: couldn't read the file", err);
-    toast("Couldn't read this file.");
-  }
+
+  renderTabStrip();
+  if (firstTabId !== null) activateTab(firstTabId);
+  scheduleSessionSave();
 }
 
 let dropzoneTimer = 0;
@@ -350,7 +739,17 @@ function logToConsole(level, message) {
 }
 
 function onRendered(message) {
-  if (message.version !== version) return;
+  const active = getActiveTab();
+  if (!active || message.docId !== active.docId) return; // a background/superseded render
+  if (
+    message.phase === "content" &&
+    pendingScroll &&
+    message.docId === pendingScroll.docId &&
+    message.version === pendingScroll.version
+  ) {
+    mdrMain.scrollTop = pendingScroll.scrollTop;
+    pendingScroll = null;
+  }
   replaceMissingImages(content);
 }
 
@@ -369,15 +768,17 @@ attachHost((message, files) => {
       tocVisible = !!message.visible;
       save(KEY_TOC, tocVisible ? "1" : "0");
       break;
-    case "retry":
-      if (currentText !== null) renderText(currentText, currentName);
-      else showPaste();
+    case "retry": {
+      const tab = getActiveTab();
+      if (tab && tab.markdown.trim().length > 0) renderTab(tab, tab.markdown);
+      else showPasteForActiveTab({ focus: false });
       break;
+    }
     case "log":
       logToConsole(message.level, message.message);
       break;
     case "drop":
-      if (files && files.length > 0) openFile(files[0]);
+      if (files && files.length > 0) openFiles(files);
       break;
     case "rendered":
       onRendered(message);
@@ -458,6 +859,11 @@ document.addEventListener(
 // ---------------------------------------------------------------------------------
 
 function toast(text) {
+  if (toastEl.classList.contains("is-visible") && toastEl.textContent === text) {
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("is-visible"), TOAST_MS);
+    return;
+  }
   toastEl.textContent = text;
   toastEl.classList.add("is-visible");
   clearTimeout(toastTimer);
@@ -507,17 +913,9 @@ tocToggleButton.addEventListener("click", () => {
   if (pageReady) deliver({ type: "tocToggle" });
 });
 
-document.getElementById("mdr-web-edit").addEventListener("click", () => {
-  if (currentText !== null && input.value.trim().length === 0) input.value = currentText;
-  showPaste();
-});
-
-document.getElementById("mdr-web-new").addEventListener("click", () => {
-  clearDocument();
-  showPaste();
-});
-
-document.getElementById("mdr-web-home").addEventListener("click", () => showPaste());
+document.getElementById("mdr-web-edit").addEventListener("click", () => showPasteForActiveTab());
+document.getElementById("mdr-web-new").addEventListener("click", () => newTab());
+document.getElementById("mdr-web-home").addEventListener("click", () => showPasteForActiveTab());
 
 // ---------------------------------------------------------------------------------
 // paste view
@@ -528,35 +926,29 @@ function updateCount() {
   countEl.textContent = length === 0 ? "" : length.toLocaleString() + (length === 1 ? " character" : " characters");
 }
 
-function clearDocument() {
-  cancelInFlight();
-  input.value = "";
-  currentText = null;
-  currentName = null;
-  lastPayload = null;
-  save(KEY_DOC, null);
-  save(KEY_NAME, null);
-  updateCount();
-}
-
 renderButton.addEventListener("click", renderFromInput);
 document.getElementById("mdr-web-open").addEventListener("click", () => fileInput.click());
 document.getElementById("mdr-web-clear").addEventListener("click", () => {
-  clearDocument();
+  clearActiveTab();
   input.focus();
 });
 
 fileInput.addEventListener("change", () => {
-  const file = fileInput.files && fileInput.files[0];
-  fileInput.value = ""; // picking the same file again must fire `change` again
-  openFile(file);
+  const files = fileInput.files;
+  fileInput.value = ""; // picking the same file(s) again must fire `change` again
+  openFiles(files);
 });
 
 input.addEventListener("input", () => {
   updateCount();
   clearTimeout(draftTimer);
-  // Keep the draft too, so a reload doesn't lose what was typed or pasted.
-  draftTimer = setTimeout(() => save(KEY_DOC, input.value || null), DRAFT_SAVE_MS);
+  draftTimer = setTimeout(() => {
+    const tab = getActiveTab();
+    if (tab && root.getAttribute("data-view") === "paste") {
+      tab.markdown = input.value;
+      scheduleSessionSave();
+    }
+  }, SAVE_DEBOUNCE_MS);
 });
 
 document.addEventListener("keydown", (event) => {
@@ -574,16 +966,6 @@ updateChoiceButtons();
 updateTocButton();
 postReadingStyle();
 
-const savedText = load(KEY_DOC);
-if (savedText) {
-  input.value = savedText;
-  currentText = savedText;
-  currentName = load(KEY_NAME);
-}
-updateCount();
-
-if (root.getAttribute("data-view") === "reader" && savedText) {
-  renderText(savedText, currentName);
-} else {
-  setView("paste");
-}
+initSession();
+renderTabStrip();
+showActiveTab();

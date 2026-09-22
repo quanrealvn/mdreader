@@ -143,6 +143,123 @@ html[data-view="reader"] #mdr-web-paste {
   to { transform: translateX(300%); }
 }
 
+/* ---------- Tab strip ---------- */
+
+.mdr-web-tabs {
+  position: relative;
+  z-index: 20;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 38px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--mdr-border);
+  background: var(--mdr-bg-subtle);
+}
+
+.mdr-web-tablist {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mdr-web-tablist::-webkit-scrollbar {
+  display: none;
+}
+
+.mdr-web-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  max-width: 220px;
+  min-width: 84px;
+  padding: 0 6px 0 12px;
+  border-radius: var(--mdr-radius-md) var(--mdr-radius-md) 0 0;
+  color: var(--mdr-fg-muted);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--mdr-duration-fast) var(--mdr-easing),
+              color var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.mdr-web-tab:hover {
+  background: var(--mdr-web-card);
+  color: var(--mdr-fg);
+}
+
+.mdr-web-tab.is-active {
+  background: var(--mdr-bg);
+  color: var(--mdr-fg);
+  box-shadow: inset 0 -2px 0 var(--mdr-accent);
+}
+
+.mdr-web-tab:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: -2px;
+}
+
+.mdr-web-tab-title {
+  overflow: hidden;
+  min-width: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.8125rem;
+}
+
+.mdr-web-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--mdr-radius-full);
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mdr-web-tab-close:hover {
+  background: color-mix(in srgb, var(--mdr-fg) 14%, transparent);
+  color: var(--mdr-fg);
+}
+
+.mdr-web-tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 4px;
+  border: none;
+  border-radius: var(--mdr-radius-md);
+  background: transparent;
+  color: var(--mdr-fg-muted);
+  cursor: pointer;
+}
+
+.mdr-web-tab-add:hover {
+  background: var(--mdr-web-card);
+  color: var(--mdr-fg);
+}
+
+.mdr-web-tab-add .mdr-web-icon {
+  width: 16px;
+  height: 16px;
+}
+
 /* ---------- Buttons ---------- */
 
 .mdr-web-button {
@@ -488,6 +605,12 @@ a.mdr-web-button {
   .mdr-web-count {
     display: none;
   }
+
+  .mdr-web-tab {
+    min-width: 64px;
+    max-width: 160px;
+    padding: 0 4px 0 10px;
+  }
 }
 
 @media (max-width: 420px) {
@@ -501,6 +624,11 @@ a.mdr-web-button {
 
   .mdr-web-segmented button {
     padding: 0 6px;
+  }
+
+  .mdr-web-tab {
+    min-width: 48px;
+    max-width: 120px;
   }
 }
 
@@ -520,6 +648,7 @@ a.mdr-web-button {
 
 @media print {
   .mdr-web-header,
+  .mdr-web-tabs,
   .mdr-web-paste,
   .mdr-web-dropzone,
   .mdr-web-toast {

@@ -78,6 +78,13 @@
     <div id="mdr-web-progress" class="mdr-web-progress" hidden></div>
   </header>
 
+  <div id="mdr-web-tabs" class="mdr-web-tabs">
+    <div id="mdr-web-tablist" class="mdr-web-tablist" role="tablist" aria-label="Open documents"></div>
+    <button id="mdr-web-tab-add" class="mdr-web-tab-add" type="button" title="New tab" aria-label="New tab">
+      <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+
   <section id="mdr-web-paste" class="mdr-web-paste" aria-label="Paste Markdown">
     <div class="mdr-web-paste-inner">
       <div class="mdr-web-editor">
@@ -99,7 +106,7 @@
       </div>
 
       <p class="mdr-web-privacy">Your text isn't stored on the server.</p>
-      <input id="mdr-web-file" type="file" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdwn,.txt,text/markdown,text/plain" hidden>
+      <input id="mdr-web-file" type="file" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdwn,.txt,text/markdown,text/plain" multiple hidden>
     </div>
   </section>
 

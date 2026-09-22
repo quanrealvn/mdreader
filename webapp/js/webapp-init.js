@@ -2,7 +2,7 @@
 // first paint. Applies the visitor's saved preferences so there is no flash:
 //   data-theme  ?theme=light|dark (this visit only) > saved Light/Dark > the system setting
 //   data-style  ?style=colorful|classic (this visit only) > saved style > colorful
-//   data-view   "reader" when the visitor left while reading; else "paste"
+//   data-view   "reader" when the active tab (session restore) has a document; else "paste"
 (function () {
   var root = document.documentElement;
 
@@ -33,6 +33,30 @@
   }
   root.setAttribute("data-style", style);
 
-  var view = read("mdr.web.view") === "reader" && read("mdr.web.doc") ? "reader" : "paste";
-  root.setAttribute("data-view", view);
+  function activeTabHasDocument() {
+    var raw = read("mdreader.session.v1");
+    if (raw) {
+      try {
+        var data = JSON.parse(raw);
+        var tabs = data && data.tabs;
+        if (Array.isArray(tabs) && tabs.length > 0) {
+          var active = null;
+          for (var i = 0; i < tabs.length; i++) {
+            if (tabs[i] && tabs[i].id === data.activeId) {
+              active = tabs[i];
+              break;
+            }
+          }
+          if (!active) active = tabs[0];
+          return !!(active && typeof active.markdown === "string" && active.markdown.trim().length > 0);
+        }
+      } catch (e) {
+        return false;
+      }
+    }
+    // Not migrated yet: fall back to the legacy single-document keys.
+    return read("mdr.web.view") === "reader" && !!read("mdr.web.doc");
+  }
+
+  root.setAttribute("data-view", activeTabHasDocument() ? "reader" : "paste");
 })();
