@@ -90,7 +90,7 @@ public sealed class JsonSettingsStore : ISettingsStore
             Theme = dto.Theme ?? defaults.Theme,
             Zoom = dto.Zoom ?? defaults.Zoom,
             TocVisible = dto.TocVisible ?? defaults.TocVisible,
-            ReadingStyle = dto.ReadingStyle ?? defaults.ReadingStyle,
+            TocWidth = dto.TocWidth ?? defaults.TocWidth,
             SplitView = dto.SplitView ?? defaults.SplitView,
             SplitRatio = dto.SplitRatio ?? defaults.SplitRatio,
             Window = dto.Window ?? defaults.Window,

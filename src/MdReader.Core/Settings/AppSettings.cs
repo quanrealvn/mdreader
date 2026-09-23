@@ -10,13 +10,6 @@ public enum ThemePreference
     [JsonStringEnumMemberName("dark")] Dark,
 }
 
-/// How the rendered document colors its structure (ARCHITECTURE §14).
-public enum ReadingStyle
-{
-    [JsonStringEnumMemberName("colorful")] Colorful,
-    [JsonStringEnumMemberName("classic")] Classic,
-}
-
 public sealed record WindowPlacement(double Left, double Top, double Width, double Height, bool IsMaximized);
 
 /// The tabs to reopen at the next start (ARCHITECTURE §4.6): fully-qualified paths in tab order, and the active one
@@ -34,8 +27,12 @@ public sealed record AppSettings
     public double Zoom { get; init; } = 1.0;                       // ZoomLevels.Min..Max
     public bool TocVisible { get; init; } = true;
 
-    [JsonConverter(typeof(ReadingStyleSettingConverter))]
-    public ReadingStyle ReadingStyle { get; init; } = ReadingStyle.Colorful;   // unknown value in settings.json → Colorful
+    /// Width of the docked contents panel in CSS px; clamped to MinTocWidth..MaxTocWidth.
+    public double TocWidth { get; init; } = DefaultTocWidth;
+
+    public const double DefaultTocWidth = 260;
+    public const double MinTocWidth = 180;
+    public const double MaxTocWidth = 560;
 
     /// Side-by-side editing: the view mode a new tab starts in (false = preview only).
     public bool SplitView { get; init; }
@@ -53,27 +50,6 @@ public sealed record AppSettings
     /// The last session's tabs; null = none recorded yet (then "session" is left out of settings.json).
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SessionState? Session { get; init; }
-}
-
-/// settings.json only: an unknown "readingStyle" (a newer version's style, a typo, a number, null) reads as Colorful
-/// instead of making the whole file "corrupt" and resetting every other setting (ARCHITECTURE §14).
-internal sealed class ReadingStyleSettingConverter : JsonConverter<ReadingStyle>
-{
-    public override bool HandleNull => true;
-
-    public override ReadingStyle Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        if (reader.TokenType == JsonTokenType.String && string.Equals(reader.GetString(), "classic", StringComparison.OrdinalIgnoreCase))
-        {
-            return ReadingStyle.Classic;
-        }
-
-        reader.Skip();   // objects/arrays: consume the whole value; primitives: no-op
-        return ReadingStyle.Colorful;
-    }
-
-    public override void Write(Utf8JsonWriter writer, ReadingStyle value, JsonSerializerOptions options) =>
-        writer.WriteStringValue(value == ReadingStyle.Classic ? "classic" : "colorful");
 }
 
 /// settings.json only: a "session" of an unexpected shape (a newer version's format, a hand edit) reads as null or loses

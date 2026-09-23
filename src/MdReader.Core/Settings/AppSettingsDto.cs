@@ -23,9 +23,7 @@ public sealed class AppSettingsDto
     public ThemePreference? Theme { get; init; }
     public double? Zoom { get; init; }
     public bool? TocVisible { get; init; }
-
-    [JsonConverter(typeof(ReadingStyleSettingConverter))]
-    public ReadingStyle? ReadingStyle { get; init; }
+    public double? TocWidth { get; init; }
 
     public bool? SplitView { get; init; }
     public double? SplitRatio { get; init; }

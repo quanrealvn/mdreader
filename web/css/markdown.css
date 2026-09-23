@@ -116,14 +116,15 @@
   padding-bottom: 0.3em;
   font-size: 2em;
   color: var(--mdr-h1);
-  border-bottom: 1px solid var(--mdr-border);
+  /* The rule is tinted with the heading's own hue rather than the neutral border color. */
+  border-bottom: 1px solid color-mix(in srgb, var(--mdr-h1) 55%, transparent);
 }
 
 .markdown-body h2 {
   padding-bottom: 0.3em;
   font-size: 1.5em;
   color: var(--mdr-h2);
-  border-bottom: 1px solid var(--mdr-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--mdr-h2) 55%, transparent);
 }
 
 .markdown-body h3 {
@@ -144,20 +145,6 @@
 .markdown-body h6 {
   font-size: 0.85em;
   color: var(--mdr-h6);
-}
-
-/* Colorful only: tint the h1/h2 rule with their own heading hue instead of
-   the plain neutral border. Classic keeps `border-bottom: 1px solid
-   var(--mdr-border)` above untouched (exact pre-M9 reproduction) — a
-   color-mix keyed off --mdr-h1/--mdr-h2 can't be the single shared value
-   because those tokens equal var(--mdr-fg) under Classic, which would tint
-   the border near-black/near-white instead of leaving it neutral. */
-:root:not([data-style="classic"]) .markdown-body h1 {
-  border-bottom-color: color-mix(in srgb, var(--mdr-h1) 55%, transparent);
-}
-
-:root:not([data-style="classic"]) .markdown-body h2 {
-  border-bottom-color: color-mix(in srgb, var(--mdr-h2) 55%, transparent);
 }
 
 /* A heading that is also a link target must not hide under a sticky banner. */

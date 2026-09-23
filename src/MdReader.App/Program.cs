@@ -192,6 +192,14 @@ public static class Program
             };
             app.SessionEnding += (_, e) => shutdown.Run($"the Windows session is ending ({e.ReasonSessionEnding})");
 
+            // Screenshots (--capture) and automated runs (--instance-id / MDREADER_TEST_MODE) must never steal focus from
+            // whatever the user is doing. ShowActivated only affects this first Show: a second instance forwarding a file
+            // still brings the window forward through WindowActivator.
+            if (options.CapturePath is not null || options.IsTestMode)
+            {
+                window.ShowActivated = false;
+            }
+
             window.Show();
             perf.Mark(PerfMarks.WindowShown);
 

@@ -1,7 +1,6 @@
 // webapp-init.js — classic, synchronous script, loaded right after theme-init.js and before
 // first paint. Applies the visitor's saved preferences so there is no flash:
 //   data-theme  ?theme=light|dark (this visit only) > saved Light/Dark > the system setting
-//   data-style  ?style=colorful|classic (this visit only) > saved style > colorful
 //   data-mode   saved Edit/Split/Read choice; else "read" when the active tab (session
 //               restore) has a document, "edit" otherwise
 (function () {
@@ -27,12 +26,6 @@
     }
   }
   root.setAttribute("data-theme", theme);
-
-  var style = params.get("style");
-  if (style !== "colorful" && style !== "classic") {
-    style = read("mdr.web.style") === "classic" ? "classic" : "colorful";
-  }
-  root.setAttribute("data-style", style);
 
   function activeTabHasDocument() {
     var raw = read("mdreader.session.v1");

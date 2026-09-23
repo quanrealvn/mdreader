@@ -8,13 +8,15 @@ namespace MdReader.App.Services;
 
 /// Restores the main window placement at startup; Save records it during shutdown (window Closing or session end, §4.11).
 /// Restore only if the saved rectangle intersects a monitor's work area; else centered 1200×900 DIP.
-/// --capture forces 1280×900 in the normal state and neither reads nor writes the saved placement.
+/// --capture forces 1280×900 in the normal state, parks the window off the visible desktop, and neither reads nor
+/// writes the saved placement.
 public sealed class WindowPlacementService
 {
     internal const double DefaultWidth = 1200;
     internal const double DefaultHeight = 900;
     internal const double CaptureWidth = 1280;
     internal const double CaptureHeight = 900;
+    private const double OffscreenMargin = 64;   // --capture parks the window this far left of every monitor
     private const int MinVisibleWidthPx = 100;
     private const int MinVisibleHeightPx = 40;
     private const string Category = "Placement";
@@ -38,7 +40,12 @@ public sealed class WindowPlacementService
 
         if (_options.CapturePath is not null)
         {
-            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            // Park the capture window off the visible desktop so a screenshot run never covers what the user is doing.
+            // The window is still Visible (never minimized), which is what WebView2 needs to keep rendering for
+            // CapturePreviewAsync; only its position is outside every monitor.
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = SystemParameters.VirtualScreenLeft - CaptureWidth - OffscreenMargin;
+            window.Top = SystemParameters.VirtualScreenTop;
             window.Width = CaptureWidth;
             window.Height = CaptureHeight;
             window.WindowState = WindowState.Normal;
