@@ -37,7 +37,10 @@ public static class SingleInstanceGate
         ArgumentNullException.ThrowIfNull(log);
 
         forwarded = false;
-        var channel = new SingleInstanceChannel(identity, log);
+
+        // Which channel this is depends on the platform: a mutex and a pipe on Windows, neither on macOS, where
+        // LaunchServices keeps the application to one instance and hands the files over itself (§4.5).
+        ISingleInstanceChannel channel = SingleInstanceChannels.Create(identity, log);
         if (channel.TryBecomePrimary())
         {
             return channel;

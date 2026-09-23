@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Security.Principal;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -13,7 +11,6 @@ using MdReader.Shell.Services;
 using MdReader.Shell.Threading;
 using MdReader.Shell.ViewModels;
 using MdReader.Ui.Composition;
-using MdReader.Ui.Interop;
 using MdReader.Ui.Services;
 using MdReader.Ui.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,7 +21,7 @@ namespace MdReader.Ui;
 /// mainEntered → CLI (exit 2) → AppPaths → single instance (forward → exit 0) → Avalonia + DI + settings → WebView2
 /// environment → theme + window + placement → reopen the last session + open CLI files → Show → pipe server → run loop.
 /// Exit codes (§4.7): 0 ok/forwarded/help, 1 crash, 2 command line, 3 WebView2 unavailable, 4 capture failed.
-public static class Program
+public static partial class Program
 {
     internal const int ExitCodeSuccess = 0;
     internal const int ExitCodeCrash = 1;
@@ -41,6 +38,7 @@ public static class Program
     public static int Main(string[] args)
     {
         StartupClock.MarkMainEntered();
+        ConfigurePlatform();
 
         var parsed = CommandLineParser.Parse(args, Environment.CurrentDirectory, Environment.GetEnvironmentVariable);
         if (!parsed.IsSuccess)
@@ -93,8 +91,8 @@ public static class Program
     }
 
     private static ISingleInstanceChannel? AcquireSingleInstance(CommandLineOptions options, IAppLog log, out bool forwarded) =>
-        SingleInstanceGate.Acquire(options, new SingleInstanceIdentity(GetUserSid(), GetSessionId(), options.InstanceId),
-                                   pid => NativeMethods.AllowSetForegroundWindow(pid), log, out forwarded);
+        SingleInstanceGate.Acquire(options, new SingleInstanceIdentity(CurrentUserId(), CurrentSessionId(), options.InstanceId),
+                                   AllowSetForegroundWindow, log, out forwarded);
 
     private static int RunApplication(string[] args, CommandLineOptions options, AppPaths paths, ISingleInstanceChannel? channel,
                                       IAppLog log)
@@ -169,6 +167,10 @@ public static class Program
             };
             services.GetRequiredService<SessionEndWatcher>().Attach(window, reason => shutdown.Run(reason, saveUnsavedTabs: true));
 
+            // The platform's own shell furniture, once the view models and the window exist: on macOS the native menu
+            // bar and the application-delegate messages that hand this instance files to open.
+            AttachPlatformShell(window, mainViewModel, channel, log);
+
             window.Show();   // never activated with --capture or in test mode; the window decides that itself
             perf.Mark(PerfMarks.WindowShown);
 
@@ -238,8 +240,7 @@ public static class Program
         LogCommandLineError(args, error, testMode);
         if (!testMode)
         {
-            Win32Dialogs.Show(0, "MdReader", $"{error}\n\n{CommandLineParser.UsageText}", NativeMethods.MB_OK,
-                              NativeMethods.MB_ICONWARNING);
+            ShowStartupMessage("MdReader", $"{error}\n\n{CommandLineParser.UsageText}", isError: true);
         }
 
         return ExitCodeCommandLine;
@@ -250,8 +251,7 @@ public static class Program
         WriteConsole(Console.Out, CommandLineParser.UsageText);
         if (!options.IsTestMode)
         {
-            Win32Dialogs.Show(0, "MdReader — command line", CommandLineParser.UsageText, NativeMethods.MB_OK,
-                              NativeMethods.MB_ICONINFORMATION);
+            ShowStartupMessage("MdReader — command line", CommandLineParser.UsageText, isError: false);
         }
     }
 
@@ -344,15 +344,31 @@ public static class Program
         }
     }
 
-    private static string GetUserSid()
-    {
-        using var identity = WindowsIdentity.GetCurrent();
-        return identity.User!.Value;
-    }
+    /// <summary>
+    /// The first thing the process does, before the command line is even parsed: anything that has to be settled
+    /// before a document can be rendered. On macOS that is the URL scheme the viewer page and the document's
+    /// resources are served over, which every rendered image URL is built from.
+    /// </summary>
+    private static partial void ConfigurePlatform();
 
-    private static int GetSessionId()
-    {
-        using var process = Process.GetCurrentProcess();
-        return process.SessionId;
-    }
+    /// The account this process runs as: the SID on Windows, the uid on POSIX. Keeps one user's instance out of
+    /// another's; unused where the OS manages instances itself.
+    private static partial string CurrentUserId();
+
+    /// The login session; unused where the OS manages instances itself.
+    private static partial int CurrentSessionId();
+
+    /// Lets the instance that is about to be handed our files take the foreground. A no-op where that needs no
+    /// permission.
+    private static partial void AllowSetForegroundWindow(int processId);
+
+    /// A message before the UI framework exists: the command line was wrong, or --help was asked for.
+    private static partial void ShowStartupMessage(string title, string message, bool isError);
+
+    /// <summary>
+    /// The shell furniture only one platform has. On Windows there is none — the toolbar and the shortcut router are
+    /// the whole UI. On macOS it is the native menu bar and the application-delegate messages that deliver files.
+    /// </summary>
+    private static partial void AttachPlatformShell(MainWindow window, MainViewModel viewModel,
+                                                    ISingleInstanceChannel? channel, IAppLog log);
 }

@@ -11,17 +11,6 @@ using Microsoft.Web.WebView2.Core;
 
 namespace MdReader.Edge;
 
-/// <summary>Why a tab can't show its page at all (the shell shows its own error in place of the web view).</summary>
-public sealed class WebViewHostFailedEventArgs(DocumentErrorKind kind, string detail, bool requiresNewWebView) : EventArgs
-{
-    public DocumentErrorKind Kind { get; } = kind;
-
-    public string Detail { get; } = detail;
-
-    /// The CoreWebView2 is closed (browser process gone): re-navigating can't help, only a new web view.
-    public bool RequiresNewWebView { get; } = requiresNewWebView;
-}
-
 /// <summary>
 /// <see cref="IWebViewChannel"/> for one WebView2 view: initialization, virtual host mappings, hardening,
 /// origin-checked message intake, posting, and render-process crash recovery (ARCHITECTURE §4.10, §6, §7.1, §8.4).
@@ -31,7 +20,7 @@ public sealed class WebViewHostFailedEventArgs(DocumentErrorKind kind, string de
 /// The shell supplies the view itself through <see cref="IWebView2Surface"/> — a WPF <c>WebView2</c> control or a
 /// <c>CoreWebView2Controller</c> in an Avalonia native host — and everything below this line is the same for both.
 /// </remarks>
-public sealed class WebView2Channel : IWebViewChannel, IDisposable
+public sealed class WebView2Channel : IHostedWebViewChannel
 {
     private const string Category = "WebViewBridge";
     private const int MaxRenderProcessFailures = 3;

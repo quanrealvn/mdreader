@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Plain net10.0, not net10.0-macos: nothing here needs Apple's bindings or their SDK, so the project restores,
+         compiles and unit-tests on every host, which is the only way the logic below gets tested at all (there is no
+         Mac in the development loop). Everything platform-specific is a P/Invoke into the Objective-C runtime, which
+         is resolved at call time and never on Windows. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Not "MdReader.WebKit": a namespace named WebKit under MdReader would shadow the class handles below in every
+         MdReader.* namespace, the same shadowing that made MdReader.WebView2 a bad root namespace for the Edge
+         backend. "Mac" is the platform this backend talks to. -->
+    <RootNamespace>MdReader.Mac</RootNamespace>
+    <!-- Interop/* uses [LibraryImport], [UnmanagedCallersOnly] and raw block literals. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MdReader.Core\MdReader.Core.csproj" />
+    <ProjectReference Include="..\MdReader.Shell\MdReader.Shell.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MdReader.Mac.Tests" />
+  </ItemGroup>
+
+</Project>

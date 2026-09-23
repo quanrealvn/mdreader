@@ -2,23 +2,23 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using MdReader.Shell.Commands;
-using MdReader.Ui.Interop;
-using Microsoft.Web.WebView2.Core;
+using MdReader.Ui.Documents;
 
 namespace MdReader.Ui.Commands;
 
 /// <summary>
 /// The Avalonia half of the §4.12 key routing. It feeds the framework-free <see cref="KeyboardShortcutRouter"/> from
-/// the two places a key can arrive: the window's tunnelling key events, and WebView2's
-/// <c>AcceleratorKeyPressed</c> for the keys pressed while focus is inside the native web view.
+/// the two places a key can arrive: the window's tunnelling key events, and the keys the native web view forwards
+/// when focus is inside the page.
 /// </summary>
 /// <remarks>
 /// The WPF <c>WebView2</c> control republishes AcceleratorKeyPressed as a routed <c>PreviewKeyDown</c> on itself, so
-/// the WPF shell only needs the window handler. Avalonia's key events never fire while the native child window has
-/// focus, so the accelerator hook is wired explicitly here — and, because that event is raised synchronously with the
-/// browser process blocked, everything it triggers is deferred by the shared router (§4.12).
+/// the WPF shell only needs the window handler. Avalonia's key events never fire while a native child view has focus,
+/// so the forwarding hook is wired explicitly here — and, because WebView2 raises it synchronously with the browser
+/// process blocked, everything it triggers is deferred by the shared router (§4.12). On macOS nothing arrives that
+/// way: the native menu bar dispatches every shortcut before the page's first responder sees the key.
 /// </remarks>
-public sealed class AvaloniaShortcutRouter
+public sealed partial class AvaloniaShortcutRouter
 {
     private readonly KeyboardShortcutRouter _router;
 
@@ -38,54 +38,29 @@ public sealed class AvaloniaShortcutRouter
     }
 
     /// <summary>
-    /// A key pressed inside the web view. True means the browser's default must be suppressed
-    /// (<c>e.Handled = true</c>); the action itself runs deferred.
+    /// A key the native web view forwarded. True means the browser's default must be suppressed; the action itself
+    /// runs deferred.
     /// </summary>
-    public bool HandleAcceleratorKey(CoreWebView2AcceleratorKeyPressedEventArgs e)
+    internal bool HandleForwardedKey(ForwardedKeyEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
-        ShortcutKey key = ToShortcutKey((int)e.VirtualKey);
-        if (key == ShortcutKey.None)
+        if (e.Key == ShortcutKey.None)
         {
             return false;
         }
 
-        if (e.KeyEventKind is CoreWebView2KeyEventKind.KeyUp or CoreWebView2KeyEventKind.SystemKeyUp)
+        if (e.IsKeyUp)
         {
-            _router.HandleKeyUp(key);
+            _router.HandleKeyUp(e.Key);
             return false;
         }
 
-        // The event carries the key but not the modifier state, so it is read from the keyboard itself.
-        return _router.HandleKeyDown(key, CurrentModifiers(), isRepeat: false);
+        // A forwarded key carries no modifier state, so it is read from the keyboard itself.
+        return _router.HandleKeyDown(e.Key, CurrentModifiers(), isRepeat: false);
     }
 
     /// <summary>The modifiers held right now, for a key that arrived without them.</summary>
-    public static ShortcutModifiers CurrentModifiers()
-    {
-        var result = ShortcutModifiers.None;
-        if (NativeMethods.IsKeyDown(NativeMethods.VK_MENU))
-        {
-            result |= ShortcutModifiers.Alt;
-        }
-
-        if (NativeMethods.IsKeyDown(NativeMethods.VK_CONTROL))
-        {
-            result |= ShortcutModifiers.Control;
-        }
-
-        if (NativeMethods.IsKeyDown(NativeMethods.VK_SHIFT))
-        {
-            result |= ShortcutModifiers.Shift;
-        }
-
-        if (NativeMethods.IsKeyDown(NativeMethods.VK_LWIN) || NativeMethods.IsKeyDown(NativeMethods.VK_RWIN))
-        {
-            result |= ShortcutModifiers.Windows;
-        }
-
-        return result;
-    }
+    public static partial ShortcutModifiers CurrentModifiers();
 
     /// The §4.12 keys, by their Avalonia name; everything else is <see cref="ShortcutKey.None"/>.
     internal static ShortcutKey ToShortcutKey(Key key) => key switch
@@ -112,34 +87,6 @@ public sealed class AvaloniaShortcutRouter
         Key.OemMinus => ShortcutKey.Minus,
         Key.Add => ShortcutKey.NumPadAdd,
         Key.Subtract => ShortcutKey.NumPadSubtract,
-        _ => ShortcutKey.None,
-    };
-
-    /// The same table by Win32 virtual key, for the keys WebView2 forwards.
-    internal static ShortcutKey ToShortcutKey(int virtualKey) => virtualKey switch
-    {
-        NativeMethods.VK_CONTROL or NativeMethods.VK_SHIFT or NativeMethods.VK_MENU
-            or NativeMethods.VK_LWIN or NativeMethods.VK_RWIN => ShortcutKey.Modifier,
-        0x42 => ShortcutKey.B,
-        0x45 => ShortcutKey.E,
-        0x46 => ShortcutKey.F,
-        0x4F => ShortcutKey.O,
-        0x50 => ShortcutKey.P,
-        0x53 => ShortcutKey.S,
-        0x57 => ShortcutKey.W,
-        0x30 => ShortcutKey.D0,
-        0x60 => ShortcutKey.NumPad0,
-        0x1B => ShortcutKey.Escape,
-        0x09 => ShortcutKey.Tab,
-        0x21 => ShortcutKey.PageUp,
-        0x22 => ShortcutKey.PageDown,
-        0x72 => ShortcutKey.F3,
-        0x73 => ShortcutKey.F4,
-        0x74 => ShortcutKey.F5,
-        0xBB => ShortcutKey.Plus,
-        0xBD => ShortcutKey.Minus,
-        0x6B => ShortcutKey.NumPadAdd,
-        0x6D => ShortcutKey.NumPadSubtract,
         _ => ShortcutKey.None,
     };
 

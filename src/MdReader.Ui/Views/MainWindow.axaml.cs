@@ -15,7 +15,6 @@ using MdReader.Core.Cli;
 using MdReader.Shell.ViewModels;
 using MdReader.Ui.Commands;
 using MdReader.Ui.Services;
-using Microsoft.Web.WebView2.Core;
 
 namespace MdReader.Ui.Views;
 
@@ -203,6 +202,9 @@ public partial class MainWindow : Window
 
     // ----- About -----
 
+    /// The same About window the More ▾ menu opens, for the macOS application menu.
+    internal void ShowAbout() => OnAboutClick(this, new RoutedEventArgs());
+
     private void OnAboutClick(object? sender, RoutedEventArgs e)
     {
         string version = GetAppVersion();
@@ -262,8 +264,8 @@ public partial class MainWindow : Window
             Margin = new Thickness(0, 4, 0, 0),
             TextWrapping = TextWrapping.Wrap,
             Foreground = this.FindResource("Brush.Foreground.Muted") as IBrush,
-            Text = $"Version {version}\nA Markdown reader for Windows.\n\n"
-                   + $".NET {Environment.Version} · WebView2 Runtime {GetWebViewVersion()}",
+            Text = $"Version {version}\n{ProductDescription}\n\n"
+                   + $".NET {Environment.Version} · {GetWebViewVersion()}",
         };
 
         var ok = new Button
@@ -312,15 +314,9 @@ public partial class MainWindow : Window
         return assembly.GetName().Version?.ToString(3) ?? "1.0.0";
     }
 
-    private static string GetWebViewVersion()
-    {
-        try
-        {
-            return CoreWebView2Environment.GetAvailableBrowserVersionString() ?? "not installed";
-        }
-        catch (Exception ex) when (ex is WebView2RuntimeNotFoundException or System.Runtime.InteropServices.COMException)
-        {
-            return "not installed";
-        }
-    }
+    /// The one line of the About box that names the platform.
+    private static partial string ProductDescription { get; }
+
+    /// What the About box calls the engine behind the page: the WebView2 Runtime's version, or WebKit's.
+    private static partial string GetWebViewVersion();
 }

@@ -4,12 +4,11 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using MdReader.Core.Theming;
 using MdReader.Shell.Services;
-using MdReader.Ui.Interop;
 
 namespace MdReader.Ui.Services;
 
 /// <summary>
-/// The Avalonia half of the theme (§10): the application's <see cref="ThemeVariant"/> and the DWM title bar of every
+/// The Avalonia half of the theme (§10): the application's <see cref="ThemeVariant"/> and the window frame of every
 /// attached window. <see cref="ThemeService"/> owns the decision; this owns the paint.
 /// </summary>
 /// <remarks>
@@ -22,10 +21,8 @@ namespace MdReader.Ui.Services;
 /// Constructed on the UI thread before the first window is built, so no window ever renders with the wrong colours.
 /// </para>
 /// </remarks>
-public sealed class AvaloniaThemeWindows : IDisposable
+public sealed partial class AvaloniaThemeWindows : IDisposable
 {
-    private const int DwmColorDefault = unchecked((int)0xFFFFFFFF);
-
     private readonly IThemeService _theme;
     private readonly List<Window> _windows = [];
     private bool _disposed;
@@ -88,48 +85,16 @@ public sealed class AvaloniaThemeWindows : IDisposable
 
     private ThemeVariant Variant => _theme.EffectiveTheme == AppTheme.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
 
-    private void ApplyWindowFrame(Window window)
-    {
-        nint handle = window.TryGetPlatformHandle()?.Handle ?? 0;
-        if (handle == 0)
-        {
-            return;
-        }
+    /// <summary>
+    /// The window's own frame. On Windows that is DWM's dark mode and, on Windows 11, the caption and text colours;
+    /// on macOS the title bar follows the window's <c>NSAppearance</c>, which the variant above already sets.
+    /// </summary>
+    private partial void ApplyWindowFrame(Window window);
 
-        bool highContrast = _theme.IsHighContrast;
-        int useDark = _theme.EffectiveTheme == AppTheme.Dark && !highContrast ? 1 : 0;
-        if (NativeMethods.DwmSetWindowAttribute(handle, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, in useDark, sizeof(int)) != 0)
-        {
-            // Windows 10 before 20H1 used attribute 19.
-            NativeMethods.DwmSetWindowAttribute(handle, NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, in useDark, sizeof(int));
-        }
-
-        if (Environment.OSVersion.Version.Build < 22000)
-        {
-            return;
-        }
-
-        int caption = DwmColorDefault;
-        int text = DwmColorDefault;
-        if (!highContrast)
-        {
-            caption = ToColorRef("Brush.Chrome.Background") ?? DwmColorDefault;
-            text = ToColorRef("Brush.Foreground") ?? DwmColorDefault;
-        }
-
-        NativeMethods.DwmSetWindowAttribute(handle, NativeMethods.DWMWA_CAPTION_COLOR, in caption, sizeof(int));
-        NativeMethods.DwmSetWindowAttribute(handle, NativeMethods.DWMWA_TEXT_COLOR, in text, sizeof(int));
-    }
-
-    /// Reads the palette brush for the variant in force, so the title bar never has its own copy of the colours.
-    private int? ToColorRef(string key)
-    {
-        if (Application.Current?.TryFindResource(key, Variant, out object? value) == true
-            && value is ISolidColorBrush { Color: { } color })
-        {
-            return NativeMethods.ToColorRef(color.R, color.G, color.B);
-        }
-
-        return null;
-    }
+    /// Reads the palette brush for the variant in force, so a title bar never has its own copy of the colours.
+    private Color? PaletteColor(string key) =>
+        Application.Current?.TryFindResource(key, Variant, out object? value) == true
+        && value is ISolidColorBrush { Color: { } color }
+            ? color
+            : null;
 }

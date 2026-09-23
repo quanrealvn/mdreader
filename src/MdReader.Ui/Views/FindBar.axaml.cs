@@ -242,6 +242,14 @@ public partial class FindBar : UserControl
 
         int count = Math.Max(0, session.MatchCount);
         int active = Math.Max(0, session.ActiveMatchIndex);   // 1-based, −1 = none
+        if (!session.CountersKnown)
+        {
+            // WebKit's find API reports only whether the term is on the page, so there is no "3/18" to show: a hit
+            // shows nothing, a miss shows the same 0/0 a counted platform shows.
+            FindMatchCount.Text = count > 0 ? "" : "0/0";
+            return;
+        }
+
         FindMatchCount.Text = string.Create(CultureInfo.InvariantCulture, $"{active}/{count}");
     }
 

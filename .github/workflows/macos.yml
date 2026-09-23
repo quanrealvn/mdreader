@@ -45,24 +45,26 @@ jobs:
             nuget-macos-
 
       - name: Work out what this branch can build here
-        # MdReader.Core is on every branch. MdReader.Shell and MdReader.Ui (the Avalonia shell) only exist on the port's
-        # branch, and while the Avalonia shell still sits on the WebView2 backend it targets
-        # net10.0-windows, which no macOS runner can build. Both cases are skipped with a note instead of
-        # failing, so this workflow is green on main and stays green as the port lands piece by piece.
+        # MdReader.Core is on every branch. MdReader.Shell, MdReader.Mac (the WKWebView backend) and
+        # MdReader.Ui (the Avalonia shell) only exist on the port's branch. A project that targets Windows
+        # only is skipped with a note rather than failing, so this workflow is green on main and stays green
+        # as the port lands piece by piece. MdReader.Ui multi-targets, which is why the build below names a
+        # framework: the default would also try net10.0-windows, which no macOS runner can build.
         run: |
           set -eo pipefail
           buildable=""
           for proj in \
             src/MdReader.Core/MdReader.Core.csproj \
             src/MdReader.Shell/MdReader.Shell.csproj \
+            src/MdReader.Mac/MdReader.Mac.csproj \
             src/MdReader.Ui/MdReader.Ui.csproj
           do
             if [ ! -f "$proj" ]; then
               echo "not on this branch, skipping: $proj"
               continue
             fi
-            if grep -Eq '<TargetFrameworks?>[^<]*-windows' "$proj"; then
-              echo "::notice title=Skipped on macOS::$proj still targets Windows only (AVALONIA-PLAN.md phase 2 moves it to net10.0)."
+            if grep -Eq '<TargetFramework>[^<]*-windows</TargetFramework>' "$proj"; then
+              echo "::notice title=Skipped on macOS::$proj targets Windows only (AVALONIA-PLAN.md phase 2 moves it to net10.0)."
               continue
             fi
             buildable="$buildable $proj"
@@ -71,24 +73,30 @@ jobs:
           echo "will build:${buildable:- nothing}"
 
       - name: Build (Release)
+        # Directory.Build.props sets TreatWarningsAsErrors, so a new warning fails the job.
         run: |
           set -eo pipefail
           for proj in $MDREADER_MAC_PROJECTS; do
             name=$(basename "$(dirname "$proj")")
             echo "::group::$name"
-            dotnet build "$proj" --configuration Release --output "artifacts/macos/$name"
+            dotnet build "$proj" --configuration Release --framework net10.0 --output "artifacts/macos/$name"
             echo "::endgroup::"
           done
 
-      # Phase 3 of docs/AVALONIA-PLAN.md turns this into a real Mac download. MdReader.Shell already builds here;
-      # once MdReader.Ui targets plain net10.0 too, add one step here:
-      #
-      #   dotnet publish src/MdReader.Ui/MdReader.Ui.csproj -c Release -r osx-arm64 \
-      #     --self-contained -o artifacts/macos/publish
-      #
-      # then lay out artifacts/macos/MdReader.app/Contents/{MacOS,Resources} with an Info.plist (the .md
-      # UTI declarations) and an .icns, and optionally `hdiutil create` a .dmg. Everything below still
-      # works: the app bundle lands under artifacts/macos and is uploaded with the rest.
+      - name: Publish the shell for Apple silicon
+        # Self-contained, because macOS ships no .NET runtime. This is the payload an .app bundle wraps.
+        if: contains(env.MDREADER_MAC_PROJECTS, 'MdReader.Ui')
+        run: |
+          set -eo pipefail
+          dotnet publish src/MdReader.Ui/MdReader.Ui.csproj --configuration Release --framework net10.0 \
+            --runtime osx-arm64 --self-contained true --output artifacts/macos/publish
+
+      # Phase 3 of docs/AVALONIA-PLAN.md turns the publish above into a real Mac download: lay out
+      # artifacts/macos/MdReader.app/Contents/{MacOS,Resources} with an Info.plist (the .md UTI
+      # declarations, which are also what makes application:openURLs: fire at all) and an .icns, and
+      # optionally `hdiutil create` a .dmg. Until the bundle exists the shell can still be run from the
+      # publish folder for a smoke test, but LaunchServices only keeps a *bundled* application to one
+      # instance, so file association and "open a second copy" behave like a plain executable until then.
       #
       # Signing and notarization come later. They need an Apple Developer account ($99/year) and repository
       # secrets this workflow deliberately doesn't use yet: the Developer ID certificate (.p12 plus its

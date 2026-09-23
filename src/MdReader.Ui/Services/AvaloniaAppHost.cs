@@ -4,13 +4,12 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using MdReader.Core.Cli;
 using MdReader.Shell.Services;
-using MdReader.Ui.Interop;
 
 namespace MdReader.Ui.Services;
 
 /// <see cref="IAppHost"/> for the Avalonia shell. Dialogs are owned by the main window once it is visible and are
 /// skipped entirely in test mode (§4.7).
-public sealed class AvaloniaAppHost : IAppHost
+public sealed partial class AvaloniaAppHost : IAppHost
 {
     private readonly CommandLineOptions _options;
 
@@ -38,24 +37,19 @@ public sealed class AvaloniaAppHost : IAppHost
 
     public void ShowError(string title, string message)
     {
-        if (_options.IsTestMode)
+        if (!_options.IsTestMode)
         {
-            return;
+            ShowErrorCore(title, message);
         }
-
-        Win32Dialogs.Show(GetOwnerHandle(), title, message, NativeMethods.MB_OK, NativeMethods.MB_ICONERROR);
     }
 
-    public bool ConfirmError(string title, string message)
-    {
-        if (_options.IsTestMode)
-        {
-            return false;
-        }
+    public bool ConfirmError(string title, string message) => !_options.IsTestMode && ConfirmErrorCore(title, message);
 
-        return Win32Dialogs.Show(GetOwnerHandle(), title, message, NativeMethods.MB_YESNO, NativeMethods.MB_ICONERROR)
-               == MessageBoxAnswer.Yes;
-    }
+    /// The platform's own error alert, owned by the main window where the platform has a notion of an owner.
+    private static partial void ShowErrorCore(string title, string message);
+
+    /// The same with Yes and No; false when the user said no.
+    private static partial bool ConfirmErrorCore(string title, string message);
 
     public void Post(Action action)
     {

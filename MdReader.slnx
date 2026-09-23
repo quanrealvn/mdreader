@@ -3,6 +3,7 @@
     <Project Path="src/MdReader.App/MdReader.App.csproj" />
     <Project Path="src/MdReader.Core/MdReader.Core.csproj" />
     <Project Path="src/MdReader.Edge/MdReader.Edge.csproj" />
+    <Project Path="src/MdReader.Mac/MdReader.Mac.csproj" />
     <Project Path="src/MdReader.Shell/MdReader.Shell.csproj" />
     <Project Path="src/MdReader.Ui/MdReader.Ui.csproj" />
     <Project Path="src/MdReader.Web/MdReader.Web.csproj" />

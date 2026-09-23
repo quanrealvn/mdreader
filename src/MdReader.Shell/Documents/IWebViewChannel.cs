@@ -69,13 +69,29 @@ public interface IWebViewChannel
 /// </summary>
 public sealed class FindSession
 {
+    private FindSession(bool countersKnown) => CountersKnown = countersKnown;
+
+    public FindSession()
+        : this(countersKnown: true)
+    {
+    }
+
     /// Total matches for the term.
     public int MatchCount { get; private set; }
 
     /// 1-based index of the highlighted match; 0 (or less) means none.
     public int ActiveMatchIndex { get; private set; }
 
+    /// <summary>
+    /// False when the platform's find API answers only "found" or "not found" — WebKit's does — so the counters
+    /// below carry nothing but that, and the find bar shows no "3/18".
+    /// </summary>
+    public bool CountersKnown { get; }
+
     public event EventHandler? CountersChanged;
+
+    /// <summary>A session for a platform with no match counters.</summary>
+    public static FindSession WithoutCounters() => new(countersKnown: false);
 
     /// Called by the channel implementation when the platform reported new counters. UI thread.
     public void UpdateCounters(int matchCount, int activeMatchIndex)
@@ -84,6 +100,9 @@ public sealed class FindSession
         ActiveMatchIndex = activeMatchIndex;
         CountersChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>The counterless form: all a WebKit find reports is whether the term is on the page. UI thread.</summary>
+    public void ReportMatch(bool found) => UpdateCounters(found ? 1 : 0, found ? 1 : 0);
 }
 
 /// <summary>

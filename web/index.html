@@ -2,7 +2,9 @@
 <html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://app.mdreader.example; style-src https://app.mdreader.example 'unsafe-inline'; img-src https://app.mdreader.example https://doc.mdreader.example https: data:; font-src https://app.mdreader.example data:; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'">
+  <!-- The mdreader:// sources are the same two hosts on macOS, where WKWebView can't serve https from inside the
+       process. Nothing on Windows can match them, so the policy there is unchanged. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://app.mdreader.example mdreader://app.mdreader.example; style-src https://app.mdreader.example mdreader://app.mdreader.example 'unsafe-inline'; img-src https://app.mdreader.example mdreader://app.mdreader.example https://doc.mdreader.example mdreader://doc.mdreader.example https: data:; font-src https://app.mdreader.example mdreader://app.mdreader.example data:; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'">
   <link rel="icon" href="data:,">                  <!-- avoids a favicon.ico 404 (seen in probe logs) -->
   <link rel="stylesheet" href="css/app.css">
   <script src="js/theme-init.js"></script>          <!-- classic, sync: ?theme= → data-theme (no flash) -->

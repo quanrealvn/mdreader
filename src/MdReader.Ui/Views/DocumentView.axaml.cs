@@ -11,19 +11,16 @@ using MdReader.Core.Documents;
 using MdReader.Core.Protocol;
 using MdReader.Core.Settings;
 using MdReader.Core.Theming;
-using MdReader.Edge;
 using MdReader.Shell.Documents;
 using MdReader.Shell.ViewModels;
 using MdReader.Ui.Commands;
 using MdReader.Ui.Documents;
-using MdReader.Ui.WebView;
-using Microsoft.Web.WebView2.Core;
 
 namespace MdReader.Ui.Views;
 
 /// <summary>
-/// View of one document tab (ARCHITECTURE §4.10–§4.12). Owns the tab's WebView2 host and its
-/// <see cref="WebView2Channel"/>, the find bar, the editor pane, zoom and theme plumbing, and the keyboard hook for the
+/// View of one document tab (ARCHITECTURE §4.10–§4.12). Owns the tab's web view and its
+/// <see cref="IHostedWebViewChannel"/>, the find bar, the editor pane, zoom and theme plumbing, and the keyboard hook for the
 /// keys pressed inside the native web view.
 /// </summary>
 /// <remarks>
@@ -31,7 +28,7 @@ namespace MdReader.Ui.Views;
 /// from the error panel's "Try again", after a failed initialization or after the browser process exited — both leave
 /// the old controller unusable.
 /// </remarks>
-public partial class DocumentView : UserControl, IDocumentTabView
+public partial class DocumentView : UserControl, IDocumentTabView, IFindableView
 {
     private const string Category = "DocumentView";
     private const double ZoomEpsilon = 0.001;
@@ -39,10 +36,10 @@ public partial class DocumentView : UserControl, IDocumentTabView
 
     private readonly DocumentTabViewModel? _tab;
     private readonly AvaloniaShortcutRouter? _shortcuts;
-    private readonly WebView2Host? _host;
+    private readonly IDocumentWebViewHost? _host;
     private bool _splitView;
     private bool _suppressEditorChange;
-    private WebView2Channel? _bridge;
+    private IHostedWebViewChannel? _bridge;
     private Window? _window;
     private bool _initStarted;
     private bool _initializing;
@@ -55,7 +52,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
     private enum HostRecovery
     {
         None,               // nothing can recover inside this process: Retry disabled, "Restart MdReader to continue."
-        Renavigate,         // the CoreWebView2 is alive: reload the page
+        Renavigate,         // the web view is alive: reload the page
         RecreateWebView,    // the controller is unusable: build a new one with the shared environment
     }
 
@@ -73,13 +70,13 @@ public partial class DocumentView : UserControl, IDocumentTabView
         DocumentViewServices services = tab.ViewServices;
         AutomationProperties.SetName(this, tab.FilePath);
 
-        _host = new WebView2Host(services.Log);
+        _host = DocumentWebViewHostFactory.Create(services);
         _host.AcceleratorKeyPressed += OnAcceleratorKeyPressed;
         _host.WebViewFocused += OnWebViewFocused;
-        WebViewHost.Children.Add(_host);
+        WebViewHost.Children.Add(_host.Control);
 
         CreateChannel();
-        _bridge!.SetZoom(services.Settings.Current.Zoom);   // global setting; applied when the controller is created
+        _bridge!.SetZoom(services.Settings.Current.Zoom);   // global setting; applied when the web view is created
         FindBarControl.Attach(() => _bridge, FocusWebView, services.Status, services.Log);
         EditorBox.TextChanged += OnEditorTextChanged;
 
@@ -108,6 +105,15 @@ public partial class DocumentView : UserControl, IDocumentTabView
         if (_tab is not null)
         {
             FindBarControl.Close(focusWebView: false);
+        }
+    }
+
+    /// <summary>The macOS Edit menu's ⌘G / ⇧⌘G, which is the same thing F3 / Shift+F3 does on Windows.</summary>
+    void IFindableView.FindFromMenu(bool backwards)
+    {
+        if (!_disposed && _tab is not null)
+        {
+            FindBarControl.FindFromShortcut(backwards);
         }
     }
 
@@ -254,6 +260,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
             _host.AcceleratorKeyPressed -= OnAcceleratorKeyPressed;
             _host.WebViewFocused -= OnWebViewFocused;
             _host.Shutdown();
+            _host.Dispose();
         }
     }
 
@@ -263,8 +270,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
     private void CreateChannel()
     {
         DocumentViewServices services = _tab!.ViewServices;
-        var bridge = new WebView2Channel(new WebView2HostSurface(_host!), services.Theme, services.Paths, services.Perf,
-                                         services.Log, services.Time);
+        IHostedWebViewChannel bridge = _host!.CreateChannel();
 
         // Before the controller exists, so the first frame already has the page background (no white flash).
         ApplyPageBackground(bridge, services.Theme.EffectiveTheme);
@@ -291,7 +297,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
             bridge.Dispose();
         }
 
-        _host?.DestroyController();
+        _host?.DestroyWebView();
         _webViewInitialized = false;
     }
 
@@ -329,20 +335,16 @@ public partial class DocumentView : UserControl, IDocumentTabView
         _initializing = true;
         DocumentTabViewModel tab = _tab;
         DocumentViewServices services = tab.ViewServices;
-        WebView2Channel bridge = _bridge;
+        IHostedWebViewChannel bridge = _bridge;
         try
         {
-            // The shared layer only knows IWebViewEnvironmentProvider; the WebView2 environment itself comes from the
-            // backend's own contract, which the composition root registers for the same singleton.
-            var provider = (IWebView2EnvironmentProvider)services.Environment;
-            CoreWebView2Environment environment = await provider.GetAsync();
             string resourceRoot = await tab.Session.ResourceRootTask;
             if (_disposed || !ReferenceEquals(bridge, _bridge))
             {
                 return;
             }
 
-            await bridge.InitializeAsync(environment, resourceRoot);
+            await _host!.InitializeAsync(bridge, resourceRoot);
             if (_disposed || !ReferenceEquals(bridge, _bridge))
             {
                 return;
@@ -431,7 +433,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
         // web view is hidden (airspace).
         if (_host is not null)
         {
-            _host.IsVisible = false;
+            _host.Control.IsVisible = false;
         }
 
         HostErrorPanel.IsVisible = true;
@@ -456,7 +458,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
         _tab.Session.ClearHostError();
         if (_host is not null)
         {
-            _host.IsVisible = true;
+            _host.Control.IsVisible = true;
         }
 
         if (recovery == HostRecovery.Renavigate && _bridge is { CanRestart: true } bridge)
@@ -511,7 +513,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
     }
 
     /// The colour the web view paints before the page has drawn anything (§10).
-    private static void ApplyPageBackground(WebView2Channel bridge, AppTheme theme)
+    private static void ApplyPageBackground(IWebViewChannel bridge, AppTheme theme)
     {
         (byte r, byte g, byte b) = ThemePalette.PageBackground(theme);
         bridge.SetBackgroundColor(r, g, b);
@@ -547,7 +549,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
     /// Ctrl+wheel inside the page (IsZoomControlEnabled) → persist the global zoom.
     private void OnZoomFactorChanged(object? sender, EventArgs e)
     {
-        if (_disposed || _tab is null || sender is not WebView2Channel bridge || !ReferenceEquals(bridge, _bridge))
+        if (_disposed || _tab is null || sender is not IHostedWebViewChannel bridge || !ReferenceEquals(bridge, _bridge))
         {
             return;
         }
@@ -609,8 +611,8 @@ public partial class DocumentView : UserControl, IDocumentTabView
             return;
         }
 
-        // Deferred: this can run inside a synchronous WebView2 callback (focus, accelerator keys) where CoreWebView2
-        // calls fail (§4.12).
+        // Deferred: this can run inside a synchronous web-view callback (focus, forwarded keys) where calls back
+        // into the web view fail (§4.12).
         DocumentSession session = _tab.Session;
         Dispatcher.UIThread.Post(() =>
         {
@@ -641,10 +643,11 @@ public partial class DocumentView : UserControl, IDocumentTabView
 
     /// <summary>
     /// The keys pressed while focus is inside the page. WebView2 raises this synchronously with the browser process
-    /// blocked, so nothing here may call a CoreWebView2 API: the window shortcuts defer through the shared router, and
-    /// the find-bar keys are posted (§4.12).
+    /// blocked, so nothing here may call back into the web view: the window shortcuts defer through the shared
+    /// router, and the find-bar keys are posted (§4.12). Nothing arrives this way on macOS, where the menu bar
+    /// dispatches shortcuts before the page is offered the key.
     /// </summary>
-    private void OnAcceleratorKeyPressed(object? sender, CoreWebView2AcceleratorKeyPressedEventArgs e)
+    private void OnAcceleratorKeyPressed(object? sender, ForwardedKeyEventArgs e)
     {
         if (_disposed || _tab is null)
         {
@@ -652,19 +655,19 @@ public partial class DocumentView : UserControl, IDocumentTabView
         }
 
         NotifyUserInteraction();
-        if (_shortcuts?.HandleAcceleratorKey(e) == true)
+        if (_shortcuts?.HandleForwardedKey(e) == true)
         {
             e.Handled = true;
             return;
         }
 
-        if (e.KeyEventKind is not (CoreWebView2KeyEventKind.KeyDown or CoreWebView2KeyEventKind.SystemKeyDown))
+        if (e.IsKeyUp)
         {
             return;
         }
 
         // F3 / Shift+F3 and Esc: the rows the shared map leaves to the document view.
-        switch (AvaloniaShortcutRouter.ToShortcutKey((int)e.VirtualKey))
+        switch (e.Key)
         {
             case MdReader.Shell.Commands.ShortcutKey.F3:
                 e.Handled = true;
@@ -747,7 +750,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
 
     private void FocusWebView()
     {
-        if (_disposed || !_webViewInitialized || _host is not { IsVisible: true } host)
+        if (_disposed || !_webViewInitialized || _host is not { Control.IsVisible: true } host)
         {
             return;
         }

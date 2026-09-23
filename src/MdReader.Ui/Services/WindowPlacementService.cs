@@ -4,7 +4,6 @@ using Avalonia.Platform;
 using MdReader.Core.Cli;
 using MdReader.Core.Diagnostics;
 using MdReader.Core.Settings;
-using MdReader.Ui.Interop;
 
 namespace MdReader.Ui.Services;
 
@@ -24,7 +23,7 @@ namespace MdReader.Ui.Services;
 /// </para>
 /// <para>The on-screen check uses the system DPI, exactly as the WPF shell does.</para>
 /// </remarks>
-public sealed class WindowPlacementService
+public sealed partial class WindowPlacementService
 {
     internal const double DefaultWidth = 1200;
     internal const double DefaultHeight = 900;
@@ -210,7 +209,8 @@ public sealed class WindowPlacementService
         return scaling > 0 ? scaling : 1;
     }
 
-    /// True if the rectangle (DIPs, converted with the system DPI) intersects some monitor's work area by a usable amount.
+    /// True if the rectangle (DIPs) intersects some screen's work area by a usable amount, so a placement saved on a
+    /// monitor that is no longer attached is discarded rather than restored where nobody can reach it.
     private static bool IsOnScreen(WindowPlacement placement)
     {
         if (!double.IsFinite(placement.Left) || !double.IsFinite(placement.Top)
@@ -219,30 +219,9 @@ public sealed class WindowPlacementService
             return false;
         }
 
-        uint dpi = NativeMethods.GetDpiForSystem();
-        double scale = (dpi == 0 ? 96 : dpi) / 96.0;
-        var rect = new NativeMethods.RECT(
-            (int)Math.Round(placement.Left * scale),
-            (int)Math.Round(placement.Top * scale),
-            (int)Math.Round((placement.Left + placement.Width) * scale),
-            (int)Math.Round((placement.Top + placement.Height) * scale));
-
-        nint monitor = NativeMethods.MonitorFromRect(in rect, NativeMethods.MONITOR_DEFAULTTONULL);
-        if (monitor == 0)
-        {
-            return false;
-        }
-
-        var info = new NativeMethods.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>() };
-        if (!NativeMethods.GetMonitorInfo(monitor, ref info))
-        {
-            return false;
-        }
-
-        NativeMethods.RECT work = info.rcWork;
-        int visibleWidth = Math.Min(rect.Right, work.Right) - Math.Max(rect.Left, work.Left);
-        int visibleHeight = Math.Min(rect.Bottom, work.Bottom) - Math.Max(rect.Top, work.Top);
-        return visibleWidth >= MinVisibleWidthPx && visibleHeight >= MinVisibleHeightPx
-               && rect.Top >= work.Top - 8;   // the title bar must be reachable
+        return IsOnScreenCore(placement);
     }
+
+    /// The platform's screen geometry: the Win32 monitor APIs the WPF shell uses, or Avalonia's screens on macOS.
+    private static partial bool IsOnScreenCore(WindowPlacement placement);
 }

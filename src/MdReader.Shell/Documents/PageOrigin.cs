@@ -3,9 +3,13 @@ using MdReader.Core.Protocol;
 namespace MdReader.Shell.Documents;
 
 /// <summary>The viewer page's identity (§7.1 rule 7). Pure URL arithmetic: no web-view type is involved.</summary>
+/// <remarks>
+/// The scheme is read from <see cref="ProtocolConstants.WebScheme"/> instead of being written out, because macOS
+/// serves the same two hosts over a scheme of its own; the host, the port and the path are the rule everywhere.
+/// </remarks>
 public static class PageOrigin
 {
-    /// True only for https://app.mdreader.example/index.html with any query (and any fragment).
+    /// True only for the app host's /index.html with any query (and any fragment).
     public static bool IsPageUrl(string? value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) || !IsAppOrigin(uri))
@@ -21,7 +25,7 @@ public static class PageOrigin
         Uri.TryCreate(source, UriKind.Absolute, out Uri? uri) && IsAppOrigin(uri);
 
     private static bool IsAppOrigin(Uri uri) =>
-        string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+        string.Equals(uri.Scheme, ProtocolConstants.WebScheme, StringComparison.OrdinalIgnoreCase)
         && string.Equals(uri.Host, ProtocolConstants.AppHost, StringComparison.OrdinalIgnoreCase)
         && uri.IsDefaultPort
         && string.IsNullOrEmpty(uri.UserInfo);
