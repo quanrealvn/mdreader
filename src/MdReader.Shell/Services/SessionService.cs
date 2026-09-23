@@ -156,21 +156,23 @@ public sealed class SessionService
         }
     }
 
-    /// The tab DocumentOpener opened (or reused) for <paramref name="path"/>: same normalization, OrdinalIgnoreCase.
+    /// The tab DocumentOpener opened (or reused) for <paramref name="path"/>: same normalization, same comparison.
     private IDocumentTab? FindTab(string path)
     {
+        PathPolicy policy = PathPolicy.Current;
         string fullPath;
         try
         {
-            // Like DocumentOpener: GetFullPath on a path with '~' may touch the network, so such a path is used as is.
-            fullPath = Path.IsPathFullyQualified(path) && path.Contains('~', StringComparison.Ordinal) ? path : Path.GetFullPath(path);
+            // Like DocumentOpener: Path.GetFullPath on a path with '~' may touch the network, so a fully qualified
+            // path is normalized lexically instead.
+            fullPath = policy.NormalizeFullPath(path) ?? Path.GetFullPath(path);
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
             return null;
         }
 
-        return _tabs.Tabs.FirstOrDefault(t => string.Equals(t.FilePath, fullPath, StringComparison.OrdinalIgnoreCase));
+        return _tabs.Tabs.FirstOrDefault(t => string.Equals(t.FilePath, fullPath, policy.Comparison));
     }
 
     private void StartRecording()

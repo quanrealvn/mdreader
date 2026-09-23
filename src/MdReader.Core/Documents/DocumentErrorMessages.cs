@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using MdReader.Core.Paths;
 using MdReader.Core.Protocol;
 
 namespace MdReader.Core.Documents;
@@ -198,20 +199,32 @@ public static partial class DocumentErrorMessages
 
         // Only a bounded prefix is examined (the result is capped at MaxDetailLength anyway).
         var text = detail.Length > MaxRawDetailLength ? detail[..MaxRawDetailLength] : detail;
+        var comparison = PathPolicy.Current.Comparison;
         foreach (var candidate in PathVariants(path))
         {
             var fileName = ShortName(candidate);
             var replacement = fileName.Length > 0 ? fileName : "the file";
 
             // Win32 errors without a dedicated message are formatted "<reason> : '<path>'"; the reason says it all.
-            text = text.Replace(" : '" + candidate + "'", string.Empty, StringComparison.OrdinalIgnoreCase);
-            text = text.Replace(candidate, replacement, StringComparison.OrdinalIgnoreCase);
+            text = text.Replace(" : '" + candidate + "'", string.Empty, comparison);
+            text = text.Replace(candidate, replacement, comparison);
         }
 
-        text = QuotedPathSuffix().Replace(text, string.Empty);
-        text = ScrubQuotedPaths(text);
-        text = BareAbsolutePath().Replace(text, m => ShortNameOrEllipsis(m.Value));
-        text = PathFragment().Replace(text, string.Empty);
+        if (UsesPosixPaths)
+        {
+            text = PosixQuotedPathSuffix().Replace(text, string.Empty);
+            text = ScrubQuotedPaths(text);
+            text = PosixBareAbsolutePath().Replace(text, m => ShortNameOrEllipsis(m.Value));
+        }
+        else
+        {
+            text = QuotedPathSuffix().Replace(text, string.Empty);
+            text = ScrubQuotedPaths(text);
+            text = BareAbsolutePath().Replace(text, m => ShortNameOrEllipsis(m.Value));
+
+            // Leftover directory fragments only appear where '\' is a separator; on POSIX the pattern would eat words.
+            text = PathFragment().Replace(text, string.Empty);
+        }
 
         text = CollapseWhitespace(text);
         if (text.Length == 0)
@@ -235,18 +248,12 @@ public static partial class DocumentErrorMessages
             return [];
         }
 
+        // Lexical only: Path.GetFullPath would expand 8.3 short names and reach the network for a '~' in a UNC path.
         var variants = new List<string> { path };
-        try
+        if (PathPolicy.Current.NormalizeFullPath(path) is { } full
+            && !string.Equals(full, path, PathPolicy.Current.Comparison))
         {
-            var full = Path.GetFullPath(path);
-            if (!string.Equals(full, path, StringComparison.OrdinalIgnoreCase))
-            {
-                variants.Add(full);
-            }
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or System.Security.SecurityException)
-        {
-            // Not a valid path: only the raw text can appear in the detail.
+            variants.Add(full);
         }
 
         return variants.OrderByDescending(v => v.Length);
@@ -340,7 +347,11 @@ public static partial class DocumentErrorMessages
 
     private static bool StartsWithAbsolutePath(ReadOnlySpan<char> s) =>
         (s.Length >= 3 && char.IsAsciiLetter(s[0]) && s[1] == ':' && s[2] is '\\' or '/')
-        || (s.Length >= 2 && ((s[0] == '\\' && s[1] == '\\') || (s[0] == '/' && s[1] == '/')));
+        || (s.Length >= 2 && ((s[0] == '\\' && s[1] == '\\') || (s[0] == '/' && s[1] == '/')))
+        || (UsesPosixPaths && s.Length >= 2 && s[0] == '/');
+
+    /// <summary>True where '/' alone starts an absolute path, so a quoted "/Users/…" is recognised as one.</summary>
+    private static bool UsesPosixPaths => PathPolicy.Current.DirectorySeparator == '/';
 
     /// <summary>
     /// The closing quote is the first quote of the same kind that is followed by the end, whitespace or punctuation,
@@ -404,4 +415,15 @@ public static partial class DocumentErrorMessages
     /// <summary>Leftover directory fragments inside a word ("Files\a.md" → "a.md"), whatever produced them.</summary>
     [GeneratedRegex(@"[^\s'""]+\\")]
     private static partial Regex PathFragment();
+
+    /// <summary>The POSIX form of <see cref="QuotedPathSuffix"/>, where a path starts with a single '/'.</summary>
+    [GeneratedRegex(@"\s:\s'/.*'\s*$")]
+    private static partial Regex PosixQuotedPathSuffix();
+
+    /// <summary>
+    /// A bare POSIX absolute path: a leading '/' that is not preceded by a word character or another '/', so
+    /// "and/or" and the "//host" of a URL are left alone. The match runs to the next whitespace.
+    /// </summary>
+    [GeneratedRegex(@"(?<![\w/])(?:/[^\s/"":\r\n]+)+/?")]
+    private static partial Regex PosixBareAbsolutePath();
 }

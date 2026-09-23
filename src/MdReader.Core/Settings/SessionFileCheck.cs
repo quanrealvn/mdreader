@@ -3,9 +3,10 @@ using MdReader.Core.Paths;
 namespace MdReader.Core.Settings;
 
 /// Startup session restore (ARCHITECTURE §4.6, §6): which of the saved session's files still exist. The checks never run
-/// on the caller's thread: one dedicated worker per path root (drive or \\server\share) checks its paths in order, so a
-/// hung network share or disconnected drive blocks only its own worker (and never a thread-pool thread). Paths that
-/// haven't answered when the timeout elapses count as missing; their workers are abandoned.
+/// on the caller's thread: one dedicated worker per volume (a drive or \\server\share on Windows, a mount under
+/// /Volumes or an automounted host on macOS) checks its paths in order, so a hung network share or disconnected drive
+/// blocks only its own worker (and never a thread-pool thread). Paths that haven't answered when the timeout elapses
+/// count as missing; their workers are abandoned.
 public static class SessionFileCheck
 {
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(2);
@@ -26,7 +27,7 @@ public static class SessionFileCheck
 
         var answers = new int[files.Count];
         var workers = Enumerable.Range(0, files.Count)
-            .GroupBy(i => RootOf(files[i]), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(i => RootOf(files[i]), PathPolicy.Current.Comparer)
             .Select(group => Task.Factory.StartNew(() =>
             {
                 foreach (var i in group)
@@ -72,13 +73,7 @@ public static class SessionFileCheck
 
     private static string RootOf(string path)
     {
-        try
-        {
-            return Path.GetPathRoot(path) ?? "";
-        }
-        catch (ArgumentException)
-        {
-            return "";
-        }
+        var policy = PathPolicy.Current;
+        return policy.GetVolumeRoot(policy.NormalizeFullPath(path)) ?? "";
     }
 }

@@ -1,36 +1,42 @@
+using MdReader.Core.Paths;
+
 namespace MdReader.Core.Hosting;
 
 // Owned by WP4 (ARCHITECTURE §2.2, §4.9).
-public sealed record AppPaths(string SettingsFile, string WebView2UserDataFolder, string LogsFolder, string WebRoot)
+public sealed record AppPaths(string SettingsFile, string CacheFolder, string LogsFolder, string WebRoot)
 {
-    /// profileDirectory null → %APPDATA%\MdReader\settings.json, %LOCALAPPDATA%\MdReader\WebView2, %LOCALAPPDATA%\MdReader\logs.
-    /// else <profile>\settings.json, <profile>\WebView2, <profile>\logs. WebRoot = <appBaseDirectory>\web.
-    public static AppPaths Create(string? profileDirectory, string appBaseDirectory)
+    /// <summary>The embedded browser's profile folder, which is the app's cache folder: WebView2's user data folder on
+    /// Windows, the WKWebsiteDataStore directory on macOS.</summary>
+    public string WebView2UserDataFolder => CacheFolder;
+
+    /// profileDirectory null → the platform's own directories (<see cref="AppDirectories"/>): on Windows unchanged
+    /// from v1, i.e. %APPDATA%\MdReader\settings.json, %LOCALAPPDATA%\MdReader\WebView2 and \logs; on macOS
+    /// ~/Library/Application Support|Caches|Logs/MdReader; on Linux the XDG directories.
+    /// else &lt;profile&gt;\settings.json, &lt;profile&gt;\WebView2, &lt;profile&gt;\logs.
+    /// WebRoot = &lt;appBaseDirectory&gt;\web.
+    public static AppPaths Create(string? profileDirectory, string appBaseDirectory, AppDirectories? directories = null)
     {
         ArgumentNullException.ThrowIfNull(appBaseDirectory);
+        directories ??= AppDirectories.Current;
+        var policy = directories.Policy;
 
         string settingsFile;
-        string webView2UserDataFolder;
+        string cacheFolder;
         string logsFolder;
 
         if (string.IsNullOrEmpty(profileDirectory))
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-
-            settingsFile = Path.Combine(appData, "MdReader", "settings.json");
-            webView2UserDataFolder = Path.Combine(localAppData, "MdReader", "WebView2");
-            logsFolder = Path.Combine(localAppData, "MdReader", "logs");
+            settingsFile = policy.Join(directories.SettingsDirectory, "settings.json");
+            cacheFolder = directories.CacheDirectory;
+            logsFolder = directories.LogsDirectory;
         }
         else
         {
-            settingsFile = Path.Combine(profileDirectory, "settings.json");
-            webView2UserDataFolder = Path.Combine(profileDirectory, "WebView2");
-            logsFolder = Path.Combine(profileDirectory, "logs");
+            settingsFile = policy.Join(profileDirectory, "settings.json");
+            cacheFolder = policy.Join(profileDirectory, "WebView2");
+            logsFolder = policy.Join(profileDirectory, "logs");
         }
 
-        var webRoot = Path.Combine(appBaseDirectory, "web");
-
-        return new AppPaths(settingsFile, webView2UserDataFolder, logsFolder, webRoot);
+        return new AppPaths(settingsFile, cacheFolder, logsFolder, policy.Join(appBaseDirectory, "web"));
     }
 }
