@@ -92,7 +92,6 @@ internal sealed class DocumentSession : IDisposable
     private BannerInfo? _reloadBanner;       // a live-reload failure while content stays visible
     private BannerInfo? _encodingBanner;
     private bool? _postedTocVisible;
-    private ReadingStyle? _postedReadingStyle;
     private DocumentErrorKind? _hostErrorKind;
 
     private (bool Enabled, TaskCompletionSource Completion)? _printModeWaiter;
@@ -839,7 +838,6 @@ internal sealed class DocumentSession : IDisposable
         _postedCompleteVersion = 0;
         _postedBanner = null;
         _postedTocVisible = null;
-        _postedReadingStyle = null;
         _printFallbackArmedAt = null;
     }
 
@@ -867,17 +865,11 @@ internal sealed class DocumentSession : IDisposable
 
         try
         {
-            // §7.1 rule 2 + §14: theme, readingStyle, tocVisibility, then the current payload. A fresh page is not in
-            // print mode.
+            // §7.1 rule 2: theme, tocVisibility, then the current payload. A fresh page is not in print mode.
             ResetPageState();
             AppSettings settings = _settings.Current;
             bool tocVisible = settings.TocVisible;
             Post(new ThemeMessage(_theme.EffectiveTheme));
-            if (Post(new ReadingStyleMessage(settings.ReadingStyle)))
-            {
-                _postedReadingStyle = settings.ReadingStyle;
-            }
-
             if (Post(new TocVisibilityMessage(tocVisible)))
             {
                 _postedTocVisible = tocVisible;
@@ -1136,12 +1128,6 @@ internal sealed class DocumentSession : IDisposable
         if (_disposed)
         {
             return;
-        }
-
-        // §14: every tab follows the reading style as soon as it changes (no re-render: the page swaps data-style).
-        if (_postedReadingStyle != settings.ReadingStyle && Post(new ReadingStyleMessage(settings.ReadingStyle)))
-        {
-            _postedReadingStyle = settings.ReadingStyle;
         }
 
         if (_postedTocVisible != settings.TocVisible && Post(new TocVisibilityMessage(settings.TocVisible)))

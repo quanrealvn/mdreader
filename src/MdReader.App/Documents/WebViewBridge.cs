@@ -225,10 +225,9 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
 
         IsReady = false;
         string theme = _theme.EffectiveTheme == AppTheme.Dark ? "dark" : "light";
-        string style = _settings.Current.ReadingStyle == ReadingStyle.Classic ? "classic" : "colorful";   // §14
         try
         {
-            core.Navigate(ProtocolConstants.PageUrl + "?theme=" + theme + "&style=" + style);
+            core.Navigate(ProtocolConstants.PageUrl + "?theme=" + theme);
         }
         catch (Exception ex)
         {

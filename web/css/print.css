@@ -18,17 +18,11 @@
     --mdr-alert-important: #8250DF;
     --mdr-alert-warning: #9A6700;
     --mdr-alert-caution: #CF222E;
-  }
 
-  /* Classic's §14 role tokens are plain `var(--mdr-fg)`/`var(--mdr-border)`/…
-     references (tokens.css), so they pick up the light values forced above
-     automatically — no extra rule needed. Colorful's role tokens are literal
-     per-theme hex, so a page printed while the app is in dark mode would
-     otherwise keep dark-mode hues (some of which don't clear 4.5:1 on white,
-     e.g. the dark heading-blue is ~3:1). Force the already-verified,
-     print-safe Light+ colorful values instead — this keeps print colorful
-     when the reader is set to Colorful and ink-friendly either way. */
-  :root:not([data-style="classic"]) {
+    /* The §14 structure colors are literal per-theme hex, so a page printed
+       while the app is in dark mode would otherwise keep dark-mode hues (some
+       of which do not clear 4.5:1 on white, e.g. the dark heading-blue is
+       ~3:1). Force the already-verified, print-safe Light+ values. */
     --mdr-h1: #0451A5;
     --mdr-h2: #AF00DB;
     --mdr-h3: #267F99;
@@ -113,14 +107,12 @@
   --mdr-alert-important: #8250DF;
   --mdr-alert-warning: #9A6700;
   --mdr-alert-caution: #CF222E;
-}
 
-/* See the @media print rule above: same fix, for the in-app print preview
-   (and the real print path, which sets [data-print] before invoking OS
-   print — this is the rule with matching specificity to tokens.css's
-   `:root[data-theme="dark"]…` role-token rules, so it's the one that
-   actually wins the cascade for a dark-mode print). */
-:root[data-print]:not([data-style="classic"]) {
+  /* Same fix as the @media print rule above, for the in-app print preview (and
+     the real print path, which sets [data-print] before invoking OS print).
+     This rule has matching specificity to tokens.css's `:root[data-theme="dark"]`
+     block and comes later, so it is the one that actually wins the cascade for
+     a dark-mode print. */
   --mdr-h1: #0451A5;
   --mdr-h2: #AF00DB;
   --mdr-h3: #267F99;

@@ -21,7 +21,7 @@ To make MdReader your default for `.md` files, right-click one, choose **Open wi
 - Tick task-list checkboxes while reading, and they are saved back to the file
 - Side by side: type on the left, see it rendered on the right
 - Contents panel you can filter and sort, find, zoom, print and PDF export
-- Colorful or classic style, light or dark theme
+- Light or dark theme
 
 ## Building it
 

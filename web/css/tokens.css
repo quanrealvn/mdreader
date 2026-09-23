@@ -50,67 +50,13 @@
   --mdr-alert-caution: #CF222E;
 
   --mdr-overlay: rgba(31, 35, 40, 0.5);
-}
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-
-  --mdr-bg: #0D1117;
-  --mdr-fg: #E6EDF3;
-  --mdr-fg-muted: #9198A1;
-  --mdr-border: #3D444D;
-  --mdr-bg-subtle: #151B23;
-  --mdr-accent: #4493F8;
-
-  --mdr-alert-note: #4493F8;
-  --mdr-alert-tip: #3FB950;
-  --mdr-alert-important: #AB7DF8;
-  --mdr-alert-warning: #D29922;
-  --mdr-alert-caution: #F85149;
-
-  --mdr-overlay: rgba(1, 4, 9, 0.6);
-}
-
-/* ---------------------------------------------------------------------- */
-/* §14 reading styles — semantic role variables, per theme × style.       */
-/*                                                                        */
-/* Classic (data-style="classic") reproduces the pre-M9 GitHub-like look  */
-/* exactly: every role below is a plain reference to an existing §10     */
-/* base token, so it inherits any later override of that base token      */
-/* (e.g. print.css forcing the light palette) automatically.             */
-/*                                                                        */
-/* Colorful (default — matches when data-style is absent or unrecognized, */
-/* via `:not([data-style="classic"])`) takes its hues from VS Code's      */
-/* Dark+/Light+ Markdown and token colors: one hue per heading level,     */
-/* string-orange for inline code, comment-green for emphasis/quotes,     */
-/* keyword-purple for strong, list-punctuation blue for markers. Every    */
-/* text role clears 4.5:1 contrast on its background — see the contrast  */
-/* table in the WP9 commit report.                                       */
-/* ---------------------------------------------------------------------- */
-
-:root[data-theme="light"][data-style="classic"] {
-  --mdr-h1: var(--mdr-fg);
-  --mdr-h2: var(--mdr-fg);
-  --mdr-h3: var(--mdr-fg);
-  --mdr-h4: var(--mdr-fg);
-  --mdr-h5: var(--mdr-fg);
-  --mdr-h6: var(--mdr-fg-muted);
-  --mdr-strong: var(--mdr-fg);
-  --mdr-em: var(--mdr-fg);
-  --mdr-del: var(--mdr-fg-muted);
-  --mdr-code-fg: var(--mdr-fg);
-  --mdr-code-bg: var(--mdr-bg-subtle);
-  --mdr-quote-fg: var(--mdr-fg-muted);
-  --mdr-quote-border: var(--mdr-border);
-  --mdr-list-marker: var(--mdr-fg-muted);
-  --mdr-link: var(--mdr-accent);
-  --mdr-table-head-fg: var(--mdr-fg);
-  --mdr-hr: var(--mdr-border);
-}
-
-:root[data-theme="light"]:not([data-style="classic"]) {
-  /* VS Code Light+: blue #0451A5, purple #AF00DB, teal #267F99,
-     function-brown #795E26, string-red #A31515, variable-navy #001080. */
+  /* Structure colors (§14): the semantic roles markdown.css and code.css paint
+     with. Body text stays neutral for readability; color goes on structure.
+     The hues are VS Code Light+ Markdown/token colors — blue #0451A5, purple
+     #AF00DB, teal #267F99, function-brown #795E26, string-red #A31515,
+     variable-navy #001080 — one hue per heading level. Every text role clears
+     4.5:1 contrast on its background. */
   --mdr-h1: #0451A5;
   --mdr-h2: #AF00DB;
   --mdr-h3: #267F99;
@@ -130,31 +76,28 @@
   --mdr-hr: #ABB2E6;
 }
 
-:root[data-theme="dark"][data-style="classic"] {
-  --mdr-h1: var(--mdr-fg);
-  --mdr-h2: var(--mdr-fg);
-  --mdr-h3: var(--mdr-fg);
-  --mdr-h4: var(--mdr-fg);
-  --mdr-h5: var(--mdr-fg);
-  --mdr-h6: var(--mdr-fg-muted);
-  --mdr-strong: var(--mdr-fg);
-  --mdr-em: var(--mdr-fg);
-  --mdr-del: var(--mdr-fg-muted);
-  --mdr-code-fg: var(--mdr-fg);
-  --mdr-code-bg: var(--mdr-bg-subtle);
-  --mdr-quote-fg: var(--mdr-fg-muted);
-  --mdr-quote-border: var(--mdr-border);
-  --mdr-list-marker: var(--mdr-fg-muted);
-  --mdr-link: var(--mdr-accent);
-  --mdr-table-head-fg: var(--mdr-fg);
-  --mdr-hr: var(--mdr-border);
-}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-:root[data-theme="dark"]:not([data-style="classic"]) {
-  /* VS Code Dark+: heading-blue #569CD6, keyword-purple #C586C0,
-     type-teal #4EC9B0, function-yellow #DCDCAA, string-orange #CE9178,
-     variable light-blue #9CDCFE, comment-green #6A9955, list-punctuation
-     blue #6796E6. */
+  --mdr-bg: #0D1117;
+  --mdr-fg: #E6EDF3;
+  --mdr-fg-muted: #9198A1;
+  --mdr-border: #3D444D;
+  --mdr-bg-subtle: #151B23;
+  --mdr-accent: #4493F8;
+
+  --mdr-alert-note: #4493F8;
+  --mdr-alert-tip: #3FB950;
+  --mdr-alert-important: #AB7DF8;
+  --mdr-alert-warning: #D29922;
+  --mdr-alert-caution: #F85149;
+
+  --mdr-overlay: rgba(1, 4, 9, 0.6);
+
+  /* Structure colors (§14), VS Code Dark+: heading-blue #569CD6,
+     keyword-purple #C586C0, type-teal #4EC9B0, function-yellow #DCDCAA,
+     string-orange #CE9178, variable light-blue #9CDCFE, comment-green
+     #6A9955, list-punctuation blue #6796E6. */
   --mdr-h1: #569CD6;
   --mdr-h2: #C586C0;
   --mdr-h3: #4EC9B0;

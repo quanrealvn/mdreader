@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using MdReader.Core.Rendering;
-using MdReader.Core.Settings;
 using MdReader.Core.Theming;
 
 namespace MdReader.Core.Protocol;
@@ -15,7 +14,6 @@ namespace MdReader.Core.Protocol;
 [JsonDerivedType(typeof(ErrorMessage), "error")]
 [JsonDerivedType(typeof(PrintModeMessage), "printMode")]
 [JsonDerivedType(typeof(TocToggleMessage), "tocToggle")]
-[JsonDerivedType(typeof(ReadingStyleMessage), "readingStyle")]
 public abstract record HostMessage;
 
 public sealed record TocToggleMessage : HostMessage;   // final-review S1
@@ -27,8 +25,6 @@ public sealed record RenderMessage(int DocId, int Version, string Title, string 
 public sealed record RenderPartMessage(int DocId, int Version, int Index, string Html) : HostMessage;
 
 public sealed record ThemeMessage(AppTheme Theme) : HostMessage;
-
-public sealed record ReadingStyleMessage(ReadingStyle Style) : HostMessage;   // ARCHITECTURE §14
 
 public sealed record ScrollToMessage(string Id) : HostMessage;
 

@@ -5,7 +5,7 @@ namespace MdReader.Core.Settings;
 public static class AppSettingsNormalizer
 {
     /// Clamp Zoom (ZoomLevels.Clamp; NaN → Default), dedupe/trim RecentFiles (rooted paths only, max 10),
-    /// drop Window if Width/Height < 200 or any value is NaN/∞, undefined ReadingStyle → Colorful,
+    /// drop Window if Width/Height < 200 or any value is NaN/∞,
     /// Session: fully-qualified paths only, trimmed, case-insensitive unique, max SessionState.MaxFiles, ActiveFile one of
     /// them (else null); clamp SplitRatio (NaN/∞ → Default); unknown SchemaVersion → defaults.
     public static AppSettings Normalize(AppSettings settings)
@@ -22,7 +22,6 @@ public static class AppSettingsNormalizer
             Zoom = double.IsNaN(settings.Zoom) ? ZoomLevels.Default : ZoomLevels.Clamp(settings.Zoom),
             Window = NormalizeWindow(settings.Window),
             RecentFiles = NormalizeRecentFiles(settings.RecentFiles),
-            ReadingStyle = Enum.IsDefined(settings.ReadingStyle) ? settings.ReadingStyle : ReadingStyle.Colorful,
             SplitRatio = NormalizeSplitRatio(settings.SplitRatio),
             Session = NormalizeSession(settings.Session),
         };

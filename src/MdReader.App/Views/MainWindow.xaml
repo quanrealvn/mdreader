@@ -25,8 +25,6 @@
         PreviewDrop="OnPreviewDrop">
 
     <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-
         <ContextMenu x:Key="MoreMenu" AutomationProperties.Name="More options">
             <MenuItem Header="_Save" Command="{Binding SaveCommand}"
                       AutomationProperties.AutomationId="SaveMenuItem"
@@ -54,16 +52,6 @@
                       InputGestureText="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[ExportPdfMenuItem]}">
                 <MenuItem.Icon>
                     <TextBlock Style="{StaticResource MenuIconStyle}" Text="&#xEA90;" />
-                </MenuItem.Icon>
-            </MenuItem>
-            <Separator />
-            <!-- §14 reading style: checked = Colorful (default), unchecked = Classic. The menu template has no check glyph,
-                 so the icon column shows a check mark while checked. -->
-            <MenuItem Header="_Colorful style" IsCheckable="True" IsChecked="{Binding IsColorfulStyle, Mode=TwoWay}"
-                      AutomationProperties.AutomationId="ReadingStyleMenuItem">
-                <MenuItem.Icon>
-                    <TextBlock Style="{StaticResource MenuIconStyle}" Text="&#xE73E;"
-                               Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=MenuItem}, Converter={StaticResource BoolToVisibility}}" />
                 </MenuItem.Icon>
             </MenuItem>
             <Separator />
