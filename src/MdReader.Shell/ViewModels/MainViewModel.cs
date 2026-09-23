@@ -242,6 +242,35 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
         return true;
     }
 
+    /// <summary>
+    /// The Windows session is ending (logoff, shutdown, Restart Manager): nothing may be asked and the process can be
+    /// killed seconds later, so every tab with unsaved text is written to disk right here. UI thread.
+    /// </summary>
+    public void SaveDirtyTabsForSessionEnd()
+    {
+        _dispatcher.VerifyAccess();
+        foreach (var tab in _tabs.ToArray())
+        {
+            if (!tab.IsDirty)
+            {
+                continue;
+            }
+
+            try
+            {
+                bool saved = tab.SaveForSessionEnd();
+                _log.Write(saved ? AppLogLevel.Info : AppLogLevel.Warning, Category,
+                    saved
+                        ? $"Saved {tab.FilePath} before the Windows session ended"
+                        : $"Couldn't save {tab.FilePath} before the Windows session ended");
+            }
+            catch (Exception ex)
+            {
+                _log.Write(AppLogLevel.Error, Category, $"Saving {tab.FilePath} before the Windows session ended failed", ex);
+            }
+        }
+    }
+
     /// Shutdown (§4.11): closes every tab — each Dispose tears down find → session → WebView — while the window and the
     /// browser are still alive, without activating neighbors on the way. Idempotent. UI thread.
     public void CloseAllTabs()
@@ -336,9 +365,14 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
         get => _activeTab?.IsSplitView ?? _settingsSnapshot.SplitView;
         set
         {
-            if (_activeTab is { } tab && tab.IsSplitView != value)
+            if (_activeTab is { } tab)
             {
-                tab.IsSplitView = value;
+                if (tab.IsSplitView != value)
+                {
+                    tab.IsSplitView = value;
+                }
+
+                value = tab.IsSplitView;   // the tab keeps the editor open while it has unsaved changes (§4.10)
             }
 
             _settings.Update(s => s.SplitView == value ? s : s with { SplitView = value });

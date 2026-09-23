@@ -24,19 +24,20 @@ const TOAST_MS = 3200;
 const SAVE_DEBOUNCE_MS = 400; // also used for the split view's live-preview debounce
 const PRINT_READY_TIMEOUT_MS = 1500; // fallback if `printModeReady` never arrives
 const TEXT_EXTENSIONS = /\.(md|markdown|mdown|mkd|mkdn|mdwn|txt|text)$/i;
-const TOAST_TOO_BIG_TO_KEEP = "Some documents are too large to keep after reload.";
 const DEFAULT_SPLIT_RATIO = 45;
 const MIN_SPLIT_RATIO = 20;
 const MAX_SPLIT_RATIO = 80;
 const DEFAULT_TOC_WIDTH = 260;
 const MIN_TOC_WIDTH = 180;
 const MAX_TOC_WIDTH = 560;
-// A task checkbox's source line, e.g. "  - [ ] Buy milk" or "1. [x] Done": optional
-// indentation, a bullet (-, +, *) or an ordered marker (1. / 1)), at least one space/tab,
-// then [ ]/[x]/[X], then a space/tab or end of line. Mirrors Core's TaskListToggle.FindMarker
-// (§4.4) so a click flips the same character the desktop would. Group 1 is everything up to
-// (not including) the marker char; group 2 is the marker char itself.
-const TASK_LINE = /^([ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]+\[)([ xX])(\]($|[ \t]))/;
+// A task checkbox's source line, e.g. "  - [ ] Buy milk", "1. [x] Done", "> - [ ] Quoted" or
+// "- > - [ ] Quoted inside a list": any number of block containers (a quote marker, or a list
+// marker opening a list that holds one), then the item's own bullet (-, +, *) or ordered
+// marker (1. / 1)), at least one space/tab, then [ ]/[x]/[X], then a space/tab or end of line.
+// Mirrors Core's TaskListToggle.FindMarker (§4.4) so a click flips the same character the
+// desktop would — the container prefix is matched but left untouched. Group 1 is everything up
+// to (not including) the marker char; group 2 is the marker char itself.
+const TASK_LINE = /^((?:[ \t]*(?:>|(?:[-+*]|\d{1,9}[.)])[ \t]))*[ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]+\[)([ xX])(\]($|[ \t]))/;
 
 const SESSION_KEY = "mdreader.session.v1";
 // Legacy single-document keys (pre-tabs), migrated once then removed.
@@ -266,6 +267,9 @@ function setMode(newMode) {
   cancelInFlight();
   applyModeAttribute(newMode);
   syncUIToActiveTab();
+  // The capture above may have taken text straight out of the editor (the draft debounce
+  // hadn't fired yet); without this it would only reach storage on pagehide.
+  scheduleSessionSave();
 }
 
 // ---------------------------------------------------------------------------------
@@ -522,31 +526,33 @@ function persistSession() {
   // storage is disabled/blocked rather than merely full, so stay silent (§ save()).
   if (!trySave(SESSION_KEY, JSON.stringify({ tabs: [], activeId: null }))) return;
 
+  // Keep as much as storage takes, most useful first: the active tab, then the others by how
+  // recently they were looked at. One document too big to store on its own is skipped, not
+  // fatal — the smaller ones behind it are still kept. Each attempt writes the whole kept set
+  // in tab order, so the last one that succeeded is already what's in storage.
   const active = getActiveTab();
   const priority = active ? [active] : [];
   for (const t of [...tabs].sort((a, b) => b.lastActive - a.lastActive)) {
     if (t !== active) priority.push(t);
   }
 
-  const kept = [];
-  let droppedAny = false;
+  const keptIds = new Set();
   for (const tab of priority) {
-    const candidate = kept.concat([tab]).map(serializeTab);
-    if (trySave(SESSION_KEY, JSON.stringify({ tabs: candidate, activeId }))) {
-      kept.push(tab);
-    } else {
-      droppedAny = true;
+    const candidate = tabs.filter((t) => t === tab || keptIds.has(t.id));
+    // Point the restore at a tab it will actually have; the active one unless it didn't fit.
+    const restoreId = candidate.some((t) => t.id === activeId) ? activeId : candidate[0].id;
+    if (trySave(SESSION_KEY, JSON.stringify({ tabs: candidate.map(serializeTab), activeId: restoreId }))) {
+      keptIds.add(tab.id);
     }
   }
 
-  if (kept.length === 0) {
-    save(SESSION_KEY, null);
-  } else {
-    const keptIds = new Set(kept.map((t) => t.id));
-    const ordered = tabs.filter((t) => keptIds.has(t.id)).map(serializeTab);
-    trySave(SESSION_KEY, JSON.stringify({ tabs: ordered, activeId }));
+  // The tabs are still open and still editable — they just won't come back, so say so plainly.
+  const dropped = tabs.length - keptIds.size;
+  if (dropped > 0) {
+    toast(
+      `Not enough browser storage: ${dropped} ${dropped === 1 ? "document" : "documents"} won't be here after a reload.`,
+    );
   }
-  if (droppedAny) toast(TOAST_TOO_BIG_TO_KEEP);
 }
 
 function loadSession() {

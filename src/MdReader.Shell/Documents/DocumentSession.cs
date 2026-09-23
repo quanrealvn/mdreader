@@ -68,6 +68,7 @@ public sealed class DocumentSession : IDisposable
     private readonly IUiDispatcher _dispatcher;
 
     private readonly SemaphoreSlim _pipelineGate = new(1, 1);
+    private readonly SemaphoreSlim _toggleGate = new(1, 1);   // one on-disk checkbox toggle at a time (§16)
     private readonly object _watcherLock = new();
     private readonly List<(RenderPhase Phase, TaskCompletionSource Completion)> _renderWaiters = [];
 
@@ -108,6 +109,8 @@ public sealed class DocumentSession : IDisposable
     private bool _diskChangedWhileDirty;
     private IUiTimer? _editTimer;
     private bool _adoptFileIntoEditor;       // the next successful file load replaces the editor buffer
+    private bool _warnedLossyEncoding;       // the "characters were replaced" status was already shown for this document
+    private string? _lastToggleWrite;        // text this session's last on-disk checkbox toggle wrote (toggle gate only)
 
     private bool _disposed;
 
@@ -180,6 +183,13 @@ public sealed class DocumentSession : IDisposable
 
     /// The editor has changes that aren't on disk.
     public bool IsDirty => _isDirty;
+
+    /// <summary>
+    /// True once the document has been read successfully at least once. Until then the editor pane has nothing to edit —
+    /// its buffer would be empty and saving it would truncate a file nobody has seen yet (§4.10) — so the text box stays
+    /// read-only and every save is refused.
+    /// </summary>
+    public bool CanEdit => _file is not null;
 
     /// Raised on the UI thread whenever Title, State, ErrorKind, IsDeleted or RenderedVersion may have changed.
     public event EventHandler? StateChanged;
@@ -1203,13 +1213,7 @@ public sealed class DocumentSession : IDisposable
         if (_isDirty)
         {
             // Never clobber unsaved text: keep it and say so. F5 loads the file, Ctrl+S overwrites it (§4.10).
-            if (!_diskChangedWhileDirty)
-            {
-                _diskChangedWhileDirty = true;
-                _log.Write(AppLogLevel.Info, Category, $"{Path} changed on disk while the editor has unsaved changes.");
-                PostBannerIfChanged();
-            }
-
+            MarkDiskChangedWhileDirty();
             return;
         }
 
@@ -1398,10 +1402,19 @@ public sealed class DocumentSession : IDisposable
     // Side-by-side editing and task-list checkboxes
 
     /// Opens the editor pane: returns the text the text box must show (CRLF, see <see cref="LineEndings"/>). Until the
-    /// first load has finished the buffer is empty; <see cref="EditorTextReplaced"/> fills it in.
+    /// first load has finished the buffer is empty and <see cref="CanEdit"/> is false; <see cref="EditorTextReplaced"/>
+    /// fills it in when the document arrives.
     public string BeginEditing()
     {
         _dispatcher.VerifyAccess();
+        if (_editorText is null)
+        {
+            // Nothing has been read yet (or every attempt failed): the buffer is a placeholder, and whatever the first
+            // successful load brings wins over it, however long that takes. With a document in hand the buffer already
+            // matches it, so an in-flight load must not overrule what the user types from here on.
+            _adoptFileIntoEditor = _file is null;
+        }
+
         _editorText ??= LineEndings.ToCrlf(_file?.Text ?? "");
         return _editorText;
     }
@@ -1418,6 +1431,7 @@ public sealed class DocumentSession : IDisposable
 
         StopEditTimer();
         _editorText = null;
+        _adoptFileIntoEditor = false;
         _diskChangedWhileDirty = false;
         SetDirty(false);
         PostBannerIfChanged();
@@ -1433,8 +1447,17 @@ public sealed class DocumentSession : IDisposable
             return;
         }
 
+        if (_file is null)
+        {
+            // No document has been read yet, so there is nothing this text could be a change to. Dropping it keeps the
+            // buffer replaceable by the first load and keeps a stray keystroke from turning into a save that truncates
+            // the file (the text box is read-only until then; this is the second lock on the same door).
+            _log.Write(AppLogLevel.Warning, Category, $"Ignored an editor change to {Path}: the document hasn't loaded yet.");
+            return;
+        }
+
         _editorText = text;
-        SetDirty(!string.Equals(text, LineEndings.ToCrlf(_file?.Text ?? ""), StringComparison.Ordinal));
+        SetDirty(!string.Equals(text, LineEndings.ToCrlf(_file.Text), StringComparison.Ordinal));
         RestartEditTimer();
     }
 
@@ -1447,7 +1470,14 @@ public sealed class DocumentSession : IDisposable
             return false;
         }
 
-        FileState target = _file ?? new FileState("", EncodingNames.Utf8, false, false, LineEndings.Crlf);
+        if (_file is not { } target)
+        {
+            // The buffer was never filled from the document: writing it would replace a file nobody has read (§4.10).
+            _log.Write(AppLogLevel.Warning, Category, $"Refused to save {Path}: the document hasn't loaded yet.");
+            _status.ShowStatus("Nothing to save yet: the file hasn't loaded.");
+            return false;
+        }
+
         string onDisk = LineEndings.Convert(text, target.LineEnding);
         string path = Path;
         Exception? failure = await Task.Run(() => TryWrite(path, onDisk, target));
@@ -1465,11 +1495,17 @@ public sealed class DocumentSession : IDisposable
         }
 
         AfterSave(onDisk, target);
+        if (TakeLossyEncodingWarning(onDisk, target) is { } warning)
+        {
+            _status.ShowStatus(warning);
+            return true;
+        }
+
         _status.ShowStatus($"Saved {IOPath.GetFileName(path)}");
         return true;
     }
 
-    /// Save on a path that can't await (closing a tab or the window). Same bytes, synchronously.
+    /// Save on a path that can't await (closing a tab or the window, the Windows session ending). Same bytes, synchronously.
     public bool SaveBlocking()
     {
         _dispatcher.VerifyAccess();
@@ -1478,7 +1514,12 @@ public sealed class DocumentSession : IDisposable
             return false;
         }
 
-        FileState target = _file ?? new FileState("", EncodingNames.Utf8, false, false, LineEndings.Crlf);
+        if (_file is not { } target)
+        {
+            _log.Write(AppLogLevel.Warning, Category, $"Refused to save {Path}: the document hasn't loaded yet.");
+            return false;
+        }
+
         string onDisk = LineEndings.Convert(text, target.LineEnding);
         Exception? failure = TryWrite(Path, onDisk, target);
         if (failure is not null)
@@ -1488,17 +1529,41 @@ public sealed class DocumentSession : IDisposable
         }
 
         AfterSave(onDisk, target);
+        TakeLossyEncodingWarning(onDisk, target);   // no toast on this path; the log carries it
         return true;
     }
 
     /// The file changed on disk since the editor went dirty, so a save overwrites someone else's version.
     public bool WouldOverwriteDiskChanges => _isDirty && _diskChangedWhileDirty;
 
+    /// <summary>
+    /// The document came from a legacy code page and the text now has characters that code page can't write, so the file
+    /// just got question marks where they were. Worth saying once per document (§4.4), not on every keystroke's save.
+    /// </summary>
+    private string? TakeLossyEncodingWarning(string onDisk, FileState target)
+    {
+        if (!target.UsedFallbackEncoding || !DocumentTextEncoder.WouldReplaceCharacters(onDisk, target.EncodingName))
+        {
+            return null;
+        }
+
+        _log.Write(AppLogLevel.Warning, Category,
+            $"Saved {Path} as {target.EncodingName}: characters that code page can't represent were replaced.");
+        if (_warnedLossyEncoding)
+        {
+            return null;
+        }
+
+        _warnedLossyEncoding = true;
+        return $"Saved as {target.EncodingName} — characters it can't represent were replaced.";
+    }
+
     private static Exception? TryWrite(string path, string text, FileState target)
     {
         try
         {
-            File.WriteAllBytes(path, DocumentTextEncoder.Encode(text, target.EncodingName, target.HasBom));
+            // Never truncate first: the old version stays on disk until the new one is complete (§4.4).
+            AtomicFileWrite.Write(path, DocumentTextEncoder.Encode(text, target.EncodingName, target.HasBom));
             return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
@@ -1523,7 +1588,13 @@ public sealed class DocumentSession : IDisposable
             return;   // rendered from the editor buffer: the file wasn't read
         }
 
+        FileState? previous = _file;
         _file = file;
+        if (previous is null)
+        {
+            RaiseStateChanged();   // CanEdit: the editor pane may go from read-only to editable
+        }
+
         if (_editorText is null)
         {
             return;
@@ -1536,7 +1607,29 @@ public sealed class DocumentSession : IDisposable
             _editorText = LineEndings.ToCrlf(file.Text);
             SetDirty(false);
             RaiseEditorTextReplaced(_editorText);
+            return;
         }
+
+        // The buffer wins, but what is on disk is no longer what the buffer was based on: a save from here overwrites
+        // someone else's version, so it has to ask first (§4.10). The watcher misses this when the change lands before
+        // the user's first keystroke and the reload only comes back afterwards.
+        if (previous is null || !string.Equals(previous.Text, file.Text, StringComparison.Ordinal))
+        {
+            MarkDiskChangedWhileDirty();
+        }
+    }
+
+    /// The document changed on disk while the editor holds unsaved text: keep the text, show the banner, ask before a save.
+    private void MarkDiskChangedWhileDirty()
+    {
+        if (_diskChangedWhileDirty)
+        {
+            return;
+        }
+
+        _diskChangedWhileDirty = true;
+        _log.Write(AppLogLevel.Info, Category, $"{Path} changed on disk while the editor has unsaved changes.");
+        PostBannerIfChanged();
     }
 
     private void SetDirty(bool dirty)
@@ -1617,14 +1710,18 @@ public sealed class DocumentSession : IDisposable
             return;
         }
 
-        _ = ToggleOnDiskAsync(toggle);
+        // The text the page's checkbox was rendered from. The write has to find exactly this on disk, or the line
+        // numbers it flips mean something else by now.
+        _ = ToggleOnDiskAsync(toggle, _lastLoaded?.Text);
     }
 
-    private async Task ToggleOnDiskAsync(TaskToggleMessage toggle)
+    private async Task ToggleOnDiskAsync(TaskToggleMessage toggle, string? expected)
     {
         try
         {
-            ToggleResult result = await Task.Run(() => ToggleFileAsync(toggle, CancellationToken.None));
+            // One toggle at a time: two quick clicks would otherwise both read the old file and the second would undo
+            // the first (§16).
+            ToggleResult result = await Task.Run(() => ToggleFileGatedAsync(toggle, expected, CancellationToken.None));
             await ReturnToUiThread();
             if (_disposed)
             {
@@ -1654,13 +1751,36 @@ public sealed class DocumentSession : IDisposable
         }
     }
 
-    /// Thread pool: re-read the file (the render may be stale), flip the marker, write it back unchanged otherwise.
-    private async Task<ToggleResult> ToggleFileAsync(TaskToggleMessage toggle, CancellationToken cancellationToken)
+    /// Thread pool: one on-disk toggle at a time, so a second click can't read the file before the first one wrote it.
+    private async Task<ToggleResult> ToggleFileGatedAsync(TaskToggleMessage toggle, string? expected, CancellationToken cancellationToken)
+    {
+        await _toggleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await ToggleFileAsync(toggle, expected, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _toggleGate.Release();
+        }
+    }
+
+    /// Thread pool, inside the toggle gate: re-read the file, check it is still the document the click was aimed at,
+    /// flip the marker and write it back.
+    private async Task<ToggleResult> ToggleFileAsync(TaskToggleMessage toggle, string? expected, CancellationToken cancellationToken)
     {
         DocumentLoadResult result = await _loader.LoadAsync(Path, cancellationToken).ConfigureAwait(false);
         if (result is not DocumentLoaded loaded)
         {
             return ToggleResult.Failed;
+        }
+
+        // The click applies to the text it was rendered from, or to what an earlier click of ours just wrote (the gate
+        // makes that ours and nobody else's). Anything else and the line numbers are about a different document.
+        bool isExpected = expected is not null && string.Equals(loaded.Text, expected, StringComparison.Ordinal);
+        if (!isExpected && !string.Equals(loaded.Text, _lastToggleWrite, StringComparison.Ordinal))
+        {
+            return ToggleResult.Stale;
         }
 
         if (!TaskListToggle.TryToggle(loaded.Text, toggle.Line, toggle.Checked, out string updated))
@@ -1673,8 +1793,15 @@ public sealed class DocumentSession : IDisposable
             return ToggleResult.Unchanged;
         }
 
-        var target = new FileState(updated, loaded.EncodingName, loaded.HasBom, loaded.UsedFallbackEncoding, "");
-        return TryWrite(Path, updated, target) is null ? ToggleResult.Written : ToggleResult.Failed;
+        var target = new FileState(updated, loaded.EncodingName, loaded.HasBom, loaded.UsedFallbackEncoding,
+            LineEndings.Detect(updated));
+        if (TryWrite(Path, updated, target) is not null)
+        {
+            return ToggleResult.Failed;
+        }
+
+        _lastToggleWrite = updated;   // inside the gate: no other toggle is looking at this
+        return ToggleResult.Written;
     }
 
     /// The write didn't happen: say so and re-render, so the box snaps back to what the document says.

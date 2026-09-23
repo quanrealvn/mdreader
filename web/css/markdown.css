@@ -213,6 +213,13 @@
   padding-left: 1.5em;
 }
 
+/* In a quote the checkbox's hanging indent (the -1.6em margin below) would reach past the
+   quote's own padding and paint over its accent bar, leaving the bar in dashes between the
+   rows. Pad the list instead, so the box hangs inside the quote rather than across its edge. */
+.markdown-body blockquote ul.contains-task-list {
+  padding-left: 1.6em;
+}
+
 .markdown-body .task-list-item {
   list-style: none;
 }

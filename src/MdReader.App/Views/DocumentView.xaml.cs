@@ -118,6 +118,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
         _splitView = enabled;
         if (enabled)
         {
+            UpdateEditorEditable();
             string text = _tab.Session.BeginEditing();
             if (!string.Equals(EditorBox.Text, text, StringComparison.Ordinal))
             {
@@ -473,7 +474,30 @@ public partial class DocumentView : UserControl, IDocumentTabView
     // ----------------------------------------------------------------------------------------------------------------
     // State, theme, zoom
 
-    private void OnSessionStateChanged(object? sender, EventArgs e) => UpdateItemStatus();
+    private void OnSessionStateChanged(object? sender, EventArgs e)
+    {
+        UpdateItemStatus();
+        UpdateEditorEditable();
+    }
+
+    /// <summary>
+    /// The editor only takes input once the document has actually been read (§4.10). Before that — a first load still
+    /// running, or one that failed — the box shows nothing and is read-only, so no keystroke can end up overwriting a
+    /// file MdReader never managed to read.
+    /// </summary>
+    private void UpdateEditorEditable()
+    {
+        if (_tab is null)
+        {
+            return;
+        }
+
+        bool readOnly = !_tab.Session.CanEdit;
+        if (EditorBox.IsReadOnly != readOnly)
+        {
+            EditorBox.IsReadOnly = readOnly;
+        }
+    }
 
     private void UpdateItemStatus()
     {
