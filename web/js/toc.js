@@ -194,6 +194,30 @@ function toggleCollapse(node) {
   }
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** A small inline chevron-right (rotated to point down when expanded, via CSS). Drawn as
+ *  an SVG rather than a text glyph so it stays crisp and unmistakable at 12px regardless
+ *  of font/fallback — a Unicode triangle glyph read as a faint dash in some captures. */
+function createTwistyIcon() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "mdr-toc-twisty-icon");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("width", "12");
+  svg.setAttribute("height", "12");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", "M6 3.5l5 4.5-5 4.5");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  svg.appendChild(path);
+  return svg;
+}
+
 /** Builds `<li>`s for `nodes` into `container` (either the root `<ol>` or a freshly
  *  created `.mdr-toc-children` `<ol>`), honoring the current sort mode. Non-destructive:
  *  it never reorders `node.children` itself, only the DOM, so switching sort mode back
@@ -207,6 +231,15 @@ function renderNodesInto(container, nodes) {
     li.dataset.level = String(node.entry.level);
     node.li = li;
 
+    // The twisty is absolutely positioned to vertically center within its own row without
+    // affecting row height. Its containing block must be THIS row only, not the whole
+    // `<li>` — a parent `<li>` also contains its (possibly tall) expanded `.mdr-toc-children`
+    // subtree, and `top: 50%` against that combined box would center the twisty somewhere
+    // in the middle of the whole branch instead of against its own row (it read as a stray
+    // mark floating between rows). `.mdr-toc-row` wraps only the twisty + link.
+    const row = document.createElement("div");
+    row.className = "mdr-toc-row";
+
     const hasChildren = node.children.length > 0;
     if (hasChildren) {
       li.setAttribute("data-collapsed", node.collapsed ? "true" : "false");
@@ -217,8 +250,9 @@ function renderNodesInto(container, nodes) {
       twisty.dataset.tocId = node.entry.id;
       twisty.setAttribute("aria-expanded", node.collapsed ? "false" : "true");
       twisty.setAttribute("aria-label", (node.collapsed ? "Expand " : "Collapse ") + node.entry.text);
+      twisty.appendChild(createTwistyIcon());
       node.twistyBtn = twisty;
-      li.appendChild(twisty);
+      row.appendChild(twisty);
     } else {
       node.twistyBtn = null;
     }
@@ -232,7 +266,9 @@ function renderNodesInto(container, nodes) {
     text.className = "mdr-toc-link-text";
     text.textContent = node.entry.text;
     a.appendChild(text);
-    li.appendChild(a);
+    row.appendChild(a);
+
+    li.appendChild(row);
 
     if (hasChildren) {
       const childOl = document.createElement("ol");
@@ -397,7 +433,7 @@ function buildToolbar() {
       let index = focusable.indexOf(document.activeElement);
       if (index < 0 && document.activeElement && document.activeElement.classList.contains("mdr-toc-twisty")) {
         const li = document.activeElement.closest(".mdr-toc-item");
-        const sibling = li ? li.querySelector(":scope > .mdr-toc-link") : null;
+        const sibling = li ? li.querySelector(":scope > .mdr-toc-row > .mdr-toc-link") : null;
         index = sibling ? focusable.indexOf(sibling) : -1;
       }
       const next = e.key === "ArrowDown" ? Math.min(index < 0 ? 0 : index + 1, focusable.length - 1) : Math.max(index < 0 ? 0 : index - 1, 0);

@@ -124,13 +124,23 @@
   display: block;
 }
 
+/* Wraps just the twisty + link (never the nested `.mdr-toc-children`), so it's the
+   containing block the twisty centers against below — its own row, not the whole branch
+   a parent `<li>` spans once expanded. */
+.mdr-toc-row {
+  position: relative;
+}
+
+/* 24x24 hit target (WCAG-friendly, easy to hit with a mouse) without changing where the
+   link text starts: it sits inside the same gutter `.mdr-toc-link`'s left padding already
+   reserves, just centered on this row instead of the old, smaller 18x18 box. */
 .mdr-toc-twisty {
   position: absolute;
-  left: 2px;
+  left: 1px;
   top: 50%;
-  width: 18px;
-  height: 18px;
-  margin-top: -9px;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
   padding: 0;
   border: none;
   border-radius: var(--mdr-radius-sm);
@@ -144,21 +154,22 @@
               color var(--mdr-duration-fast) var(--mdr-easing);
 }
 
-.mdr-toc-twisty::before {
-  content: "\25B8"; /* ▸ */
-  display: inline-block;
-  font-size: 11px;
-  line-height: 1;
+.mdr-toc-twisty-icon {
   transition: transform var(--mdr-duration-fast) var(--mdr-easing);
 }
 
-.mdr-toc-twisty[aria-expanded="true"]::before {
+.mdr-toc-twisty[aria-expanded="true"] .mdr-toc-twisty-icon {
   transform: rotate(90deg);
 }
 
 .mdr-toc-twisty:hover {
   background: var(--mdr-bg-subtle);
   color: var(--mdr-fg);
+}
+
+.mdr-toc-twisty:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 1px;
 }
 
 .mdr-toc-link {
@@ -181,7 +192,7 @@
   min-width: 0;
 }
 
-.mdr-toc-item[data-level="1"] > .mdr-toc-link {
+.mdr-toc-item[data-level="1"] > .mdr-toc-row > .mdr-toc-link {
   font-weight: 600;
   color: var(--mdr-fg);
 }
@@ -207,6 +218,6 @@
   background: transparent;
 }
 
-.mdr-toc-item:has(> .mdr-toc-link[aria-current])::before {
+.mdr-toc-item:has(> .mdr-toc-row > .mdr-toc-link[aria-current])::before {
   background: var(--mdr-accent);
 }

@@ -275,7 +275,7 @@ button {
   .mdr-icon-button,
   .mdr-toc-link,
   .mdr-toc-twisty,
-  .mdr-toc-twisty::before,
+  .mdr-toc-twisty-icon,
   #mdr-error-retry {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
@@ -336,6 +336,6 @@ html.mdr-large .mdr-toc-backdrop,
 html.mdr-large .mdr-icon-button,
 html.mdr-large .mdr-toc-link,
 html.mdr-large .mdr-toc-twisty,
-html.mdr-large .mdr-toc-twisty::before {
+html.mdr-large .mdr-toc-twisty-icon {
   transition: none;
 }
