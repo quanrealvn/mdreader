@@ -33,6 +33,8 @@ dotnet build MdReader.slnx
 
 `installer\build.ps1` builds the installer (you'll need Inno Setup 6), and `dotnet run --project src\MdReader.Web` starts the web version locally.
 
+Pull requests are built for you: the solution on Windows, and the web version's container image on Linux exactly the way it's deployed. Warnings are errors, so a new warning fails the build. Pushing a `v*` tag builds the installer and the VS Code extension and attaches them to that release. The workflows live in `.github/workflows`.
+
 ## License
 
 MIT

@@ -1,0 +1,68 @@
+name: Build
+
+# Every push to main and every pull request: the Windows solution (the WPF app, Core and the web server)
+# and the Linux container image that fly.io deploys.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+
+jobs:
+  windows:
+    name: Windows solution
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install the .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          # global.json asks for 10.0.400 with rollForward "latestFeature", and the action honours that:
+          # it installs the newest 10.0 SDK rather than that exact patch, so a newer patch on the runner
+          # can't break the job.
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-windows-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: |
+            nuget-windows-
+
+      - name: Restore
+        run: dotnet restore MdReader.slnx
+
+      - name: Build (Release)
+        # Directory.Build.props sets TreatWarningsAsErrors, so a new warning fails the job. NuGet audit
+        # warnings (NU19xx) are deliberately excluded there: a fresh advisory must not break the build.
+        run: dotnet build MdReader.slnx --configuration Release --no-restore
+
+  web-image:
+    name: Web server image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Build the image the way fly deploy builds it
+        # fly.toml points its remote builder at this Dockerfile with the repo root as the context, so the
+        # same .dockerignore applies and the Dockerfile rewrites global.json for the SDK the image ships.
+        # Nothing is pushed: this only proves the deploy would build.
+        run: docker build --file Dockerfile --tag mdreader-web:${{ github.sha }} --progress=plain .

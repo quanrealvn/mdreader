@@ -1,0 +1,104 @@
+name: macOS
+
+# The macOS half of docs/AVALONIA-PLAN.md. Runs on demand from the Actions tab, and on every push to the
+# avalonia branch. It builds whichever cross-platform projects the branch has and uploads the output, so
+# there is something to download long before there's an .app bundle.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [avalonia]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+
+jobs:
+  build:
+    name: Build on macOS
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install the .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          # 10.0.400 with rollForward "latestFeature" in global.json: the newest 10.0 SDK is installed.
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-macos-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: |
+            nuget-macos-
+
+      - name: Work out what this branch can build here
+        # MdReader.Core is on every branch. MdReader.Shell and MdReader.Avalonia only exist on the port's
+        # branch, and while the Avalonia shell still sits on the WebView2 backend it targets
+        # net10.0-windows, which no macOS runner can build. Both cases are skipped with a note instead of
+        # failing, so this workflow is green on main and stays green as the port lands piece by piece.
+        run: |
+          set -eo pipefail
+          buildable=""
+          for proj in \
+            src/MdReader.Core/MdReader.Core.csproj \
+            src/MdReader.Shell/MdReader.Shell.csproj \
+            src/MdReader.Avalonia/MdReader.Avalonia.csproj
+          do
+            if [ ! -f "$proj" ]; then
+              echo "not on this branch, skipping: $proj"
+              continue
+            fi
+            if grep -Eq '<TargetFrameworks?>[^<]*-windows' "$proj"; then
+              echo "::notice title=Skipped on macOS::$proj still targets Windows only (AVALONIA-PLAN.md phase 2 moves it to net10.0)."
+              continue
+            fi
+            buildable="$buildable $proj"
+          done
+          echo "MDREADER_MAC_PROJECTS=${buildable# }" >> "$GITHUB_ENV"
+          echo "will build:${buildable:- nothing}"
+
+      - name: Build (Release)
+        run: |
+          set -eo pipefail
+          for proj in $MDREADER_MAC_PROJECTS; do
+            name=$(basename "$(dirname "$proj")")
+            echo "::group::$name"
+            dotnet build "$proj" --configuration Release --output "artifacts/macos/$name"
+            echo "::endgroup::"
+          done
+
+      # Phase 3 of docs/AVALONIA-PLAN.md turns this into a real Mac download. Once MdReader.Avalonia (or
+      # MdReader.Shell) targets plain net10.0, add one step here:
+      #
+      #   dotnet publish src/MdReader.Avalonia/MdReader.Avalonia.csproj -c Release -r osx-arm64 \
+      #     --self-contained -o artifacts/macos/publish
+      #
+      # then lay out artifacts/macos/MdReader.app/Contents/{MacOS,Resources} with an Info.plist (the .md
+      # UTI declarations) and an .icns, and optionally `hdiutil create` a .dmg. Everything below still
+      # works: the app bundle lands under artifacts/macos and is uploaded with the rest.
+      #
+      # Signing and notarization come later. They need an Apple Developer account ($99/year) and repository
+      # secrets this workflow deliberately doesn't use yet: the Developer ID certificate (.p12 plus its
+      # password) for `codesign`, and an App Store Connect API key for `xcrun notarytool`. Until that is
+      # set up the artifact is unsigned and macOS will quarantine it (right-click, Open).
+
+      - name: Upload the build output
+        uses: actions/upload-artifact@v7
+        with:
+          name: mdreader-macos-${{ github.sha }}
+          path: artifacts/macos
+          if-no-files-found: error
+          retention-days: 14
