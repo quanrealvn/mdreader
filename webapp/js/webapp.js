@@ -1,15 +1,15 @@
 // webapp.js — the web version's "host" (ARCHITECTURE §15). It plays the part the desktop app
-// plays for the page: after `ready` it posts theme, readingStyle and tocVisibility, renders
+// plays for the page: after `ready` it posts theme and tocVisibility, renders
 // documents through POST /api/render and delivers the returned host messages unchanged
 // (except docId/version, which it owns), and answers the page's messages: link, copy,
-// tocVisibilityChanged, retry, log, drop, rendered, printModeReady, taskToggle. It also owns
+// tocVisibilityChanged, tocWidthChanged, retry, log, drop, rendered, printModeReady, taskToggle. It also owns
 // the web-only chrome: the header toolbar, the tab strip, the Edit/Split/Read workspace
 // (editor pane, draggable divider, split ratio), file open / drop, and the toast.
 //
 // Tabs: each tab is one document {id, title, markdown, scrollTop} (plus in-memory-only
 // bookkeeping: docId/version for the protocol, a cached `payload` of host messages so
 // switching tabs never re-fetches). The workspace view — Edit, Split or Read — is a single
-// global preference (like theme/style), not per tab: `mode` decides whether the editor pane,
+// global preference (like the theme), not per tab: `mode` decides whether the editor pane,
 // the preview pane, or both are shown for whichever tab is active.
 //
 // Module-scoped state only (content ids can clobber window properties, §7.3).
@@ -28,6 +28,9 @@ const TOAST_TOO_BIG_TO_KEEP = "Some documents are too large to keep after reload
 const DEFAULT_SPLIT_RATIO = 45;
 const MIN_SPLIT_RATIO = 20;
 const MAX_SPLIT_RATIO = 80;
+const DEFAULT_TOC_WIDTH = 260;
+const MIN_TOC_WIDTH = 180;
+const MAX_TOC_WIDTH = 560;
 // A task checkbox's source line, e.g. "  - [ ] Buy milk" or "1. [x] Done": optional
 // indentation, a bullet (-, +, *) or an ordered marker (1. / 1)), at least one space/tab,
 // then [ ]/[x]/[X], then a space/tab or end of line. Mirrors Core's TaskListToggle.FindMarker
@@ -41,8 +44,8 @@ const KEY_DOC = "mdr.web.doc";
 const KEY_NAME = "mdr.web.name";
 const KEY_VIEW = "mdr.web.view";
 const KEY_THEME = "mdr.web.theme";
-const KEY_STYLE = "mdr.web.style";
 const KEY_TOC = "mdr.web.toc";
+const KEY_TOC_WIDTH = "mdr.web.tocwidth";
 const KEY_MODE = "mdr.web.mode";
 const KEY_RATIO = "mdr.web.ratio";
 
@@ -116,13 +119,12 @@ let liveTimer = 0;
 let printReadyTimer = 0;
 let dividerDragging = false;
 
-// Theme / style: a query parameter pins them for this visit (screenshots, links); otherwise
-// the saved choice. theme "system" follows prefers-color-scheme.
+// Theme: a query parameter pins it for this visit (screenshots, links); otherwise the saved
+// choice. "system" follows prefers-color-scheme.
 const queryTheme = oneOf(params.get("theme"), ["light", "dark"]);
-const queryStyle = oneOf(params.get("style"), ["colorful", "classic"]);
 let themeChoice = queryTheme || oneOf(load(KEY_THEME), ["light", "dark"]) || "system";
-let styleChoice = queryStyle || oneOf(load(KEY_STYLE), ["classic"]) || "colorful";
 let tocVisible = load(KEY_TOC) !== "0";
+let tocWidth = clampTocWidth(parseFloat(load(KEY_TOC_WIDTH)));
 
 // data-mode was already set (no-flash) by webapp-init.js before this module ran; read it back
 // so both scripts agree on the same default without duplicating the heuristic.
@@ -131,6 +133,13 @@ let splitRatio = clampRatio(parseFloat(load(KEY_RATIO)));
 
 function oneOf(value, allowed) {
   return allowed.includes(value) ? value : null;
+}
+
+function clampTocWidth(value) {
+  // Mirrors AppSettings.TocWidth on the desktop side (§4.6); the page caps it at half the
+  // window on top of this.
+  if (!Number.isFinite(value)) return DEFAULT_TOC_WIDTH;
+  return Math.min(MAX_TOC_WIDTH, Math.max(MIN_TOC_WIDTH, Math.round(value)));
 }
 
 function clampRatio(value) {
@@ -604,14 +613,8 @@ function postTheme() {
   else root.setAttribute("data-theme", resolvedTheme());
 }
 
-function postReadingStyle() {
-  // Set directly as well: the page applies `readingStyle` itself where supported (§14).
-  root.setAttribute("data-style", styleChoice);
-  if (pageReady) deliver({ type: "readingStyle", style: styleChoice });
-}
-
 function postTocVisibility() {
-  if (pageReady) deliver({ type: "tocVisibility", visible: tocVisible });
+  if (pageReady) deliver({ type: "tocVisibility", visible: tocVisible, width: tocWidth });
 }
 
 function deliverPayload(messages) {
@@ -621,7 +624,6 @@ function deliverPayload(messages) {
 function onReady() {
   pageReady = true;
   postTheme();
-  postReadingStyle();
   postTocVisibility();
   if (lastPayload) {
     // A page reload after a render: post the current payload again (§7.1 rule 2).
@@ -958,6 +960,10 @@ attachHost((message, files) => {
       tocVisible = !!message.visible;
       save(KEY_TOC, tocVisible ? "1" : "0");
       break;
+    case "tocWidthChanged":
+      tocWidth = clampTocWidth(Number(message.width));
+      save(KEY_TOC_WIDTH, String(tocWidth));
+      break;
     case "retry": {
       const tab = getActiveTab();
       if (tab && tab.markdown.trim().length > 0) renderTab(tab, tab.markdown);
@@ -1074,9 +1080,6 @@ function updateChoiceButtons() {
   for (const button of document.querySelectorAll("[data-theme-choice]")) {
     button.setAttribute("aria-pressed", String(button.dataset.themeChoice === themeChoice));
   }
-  for (const button of document.querySelectorAll("[data-style-choice]")) {
-    button.setAttribute("aria-pressed", String(button.dataset.styleChoice === styleChoice));
-  }
   for (const button of document.querySelectorAll("[data-mode-choice]")) {
     button.setAttribute("aria-pressed", String(button.dataset.modeChoice === mode));
   }
@@ -1092,15 +1095,6 @@ for (const button of document.querySelectorAll("[data-theme-choice]")) {
     save(KEY_THEME, themeChoice === "system" ? null : themeChoice);
     updateChoiceButtons();
     postTheme();
-  });
-}
-
-for (const button of document.querySelectorAll("[data-style-choice]")) {
-  button.addEventListener("click", () => {
-    styleChoice = button.dataset.styleChoice;
-    save(KEY_STYLE, styleChoice);
-    updateChoiceButtons();
-    postReadingStyle();
   });
 }
 
@@ -1172,7 +1166,6 @@ document.addEventListener("keydown", (event) => {
 
 updateChoiceButtons();
 updateTocButton();
-postReadingStyle();
 
 initSession();
 renderTabStrip();

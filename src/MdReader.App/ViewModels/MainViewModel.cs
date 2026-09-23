@@ -372,18 +372,6 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
 
     public bool HasRecentFiles => _recentFiles.Count > 0;
 
-    /// More ▾ → "Colorful style" (ReadingStyleMenuItem, checkable, TwoWay): checked = Colorful, unchecked = Classic (§14).
-    /// Every open tab follows through SettingsCoordinator.Changed (DocumentSession posts readingStyle).
-    public bool IsColorfulStyle
-    {
-        get => _settingsSnapshot.ReadingStyle == ReadingStyle.Colorful;
-        set
-        {
-            var style = value ? ReadingStyle.Colorful : ReadingStyle.Classic;
-            _settings.Update(s => s.ReadingStyle == style ? s : s with { ReadingStyle = style });
-        }
-    }
-
     /// Segoe Fluent Icons glyph for the current theme preference (System = half sun, Light = sun, Dark = moon).
     public string ThemeGlyph => _theme.Preference switch
     {
@@ -633,11 +621,6 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
         if (previous.TocVisible != settings.TocVisible)
         {
             OnPropertyChanged(nameof(IsTocVisible));
-        }
-
-        if (previous.ReadingStyle != settings.ReadingStyle)
-        {
-            OnPropertyChanged(nameof(IsColorfulStyle));
         }
 
         if (!previous.RecentFiles.SequenceEqual(settings.RecentFiles, StringComparer.Ordinal))

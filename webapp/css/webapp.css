@@ -466,10 +466,6 @@ a.mdr-web-button {
   box-shadow: var(--mdr-shadow-sm);
 }
 
-.mdr-web-segmented [data-style-choice="colorful"][aria-pressed="true"] .mdr-web-icon {
-  stroke: var(--mdr-web-brand-b);
-}
-
 /* ---------- Paste view ---------- */
 
 .mdr-web-paste {

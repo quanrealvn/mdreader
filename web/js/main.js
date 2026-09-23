@@ -1,5 +1,5 @@
 // main.js — entry point. Owns render/renderPart assembly and application, scroll
-// preservation, theme, readingStyle, tocVisibility, tocToggle, banner, error and printMode handling, and sends
+// preservation, theme, tocVisibility, tocToggle, banner, error and printMode handling, and sends
 // `ready` once and `rendered` per phase (§7.1, §7.3).
 //
 // All state lives in module-scoped variables (never on `window`): content ids from the
@@ -9,7 +9,7 @@
 import { send, on, PROTOCOL, log } from "./bridge.js";
 import { scrollToFragment } from "./links.js";
 import "./links.js"; // side effect: installs the document-level click/auxclick/drop listeners
-import { renderToc, setTocVisible, toggleToc } from "./toc.js";
+import { renderToc, setTocVisible, setTocWidth, toggleToc } from "./toc.js";
 import { showError, hideError } from "./errorview.js";
 import { enhanceCode } from "./codeblocks.js";
 import { enhanceMath, enhanceDiagrams, setDiagramTheme } from "./enhance.js";
@@ -257,12 +257,6 @@ function applyTheme(theme) {
   if (!printModeOn) setDiagramTheme(theme);
 }
 
-// Reading style (§14): CSS keys the structure colors off `data-style`; anything but
-// "classic" means colorful (the default, also when the attribute is missing).
-function applyReadingStyle(style) {
-  htmlEl.setAttribute("data-style", style === "classic" ? "classic" : "colorful");
-}
-
 // ---------------------------------------------------------------------------------
 // print mode
 // ---------------------------------------------------------------------------------
@@ -344,9 +338,11 @@ initTasks(mdrContent);
 on("render", handleRender);
 on("renderPart", handleRenderPart);
 on("theme", (msg) => applyTheme(msg.theme === "dark" ? "dark" : "light"));
-on("readingStyle", (msg) => applyReadingStyle(msg.style));
 on("scrollTo", (msg) => scrollToFragment(msg.id));
-on("tocVisibility", (msg) => setTocVisible(!!msg.visible));
+on("tocVisibility", (msg) => {
+  setTocVisible(!!msg.visible);
+  setTocWidth(msg.width);   // absent or unusable: the page keeps its current width
+});
 on("tocToggle", () => toggleToc());
 on("banner", (msg) => setBanner(msg.banner ?? null));
 on("error", (msg) => {

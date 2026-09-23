@@ -8,6 +8,7 @@ namespace MdReader.Core.Protocol;
 [JsonDerivedType(typeof(CopyMessage), "copy")]
 [JsonDerivedType(typeof(RenderedMessage), "rendered")]
 [JsonDerivedType(typeof(TocVisibilityChangedMessage), "tocVisibilityChanged")]
+[JsonDerivedType(typeof(TocWidthChangedMessage), "tocWidthChanged")]
 [JsonDerivedType(typeof(RetryMessage), "retry")]
 [JsonDerivedType(typeof(LogMessage), "log")]
 [JsonDerivedType(typeof(PrintModeReadyMessage), "printModeReady")]
@@ -24,6 +25,9 @@ public sealed record CopyMessage(string Text) : WebMessage;
 public sealed record RenderedMessage(int DocId, int Version, double Ms, RenderPhase Phase) : WebMessage;
 
 public sealed record TocVisibilityChangedMessage(bool Visible) : WebMessage;
+
+/// The user dragged (or keyed) the contents panel to a new width, in CSS px. The page has already applied it.
+public sealed record TocWidthChangedMessage(double Width) : WebMessage;
 
 public sealed record RetryMessage : WebMessage;
 
