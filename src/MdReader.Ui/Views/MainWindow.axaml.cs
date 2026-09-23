@@ -292,7 +292,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            using Stream stream = AssetLoader.Open(new Uri("avares://MdReader.Ui/Assets/MdReader.ico"));
+            using Stream stream = AssetLoader.Open(new Uri("avares://MdReader/Assets/MdReader.ico"));
             Icon = new WindowIcon(stream);
         }
         catch (Exception)

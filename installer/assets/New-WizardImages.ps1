@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Regenerates the Inno Setup wizard images in installer\assets from src\MdReader.App\Assets\MdReader.ico.
+    Regenerates the Inno Setup wizard images in installer\assets from src\MdReader.Ui\Assets\MdReader.ico.
 
 .DESCRIPTION
     Run this after the application icon changes; the generated PNGs are committed.
@@ -21,7 +21,7 @@ Add-Type -AssemblyName System.Drawing
 
 $assets = $PSScriptRoot
 $repoRoot = Split-Path -Parent (Split-Path -Parent $assets)
-$iconPath = Join-Path $repoRoot 'src\MdReader.App\Assets\MdReader.ico'
+$iconPath = Join-Path $repoRoot 'src\MdReader.Ui\Assets\MdReader.ico'
 
 # The 256 px entry of the .ico is PNG-compressed, which System.Drawing.Icon can't decode: read it from the icon directory.
 function Get-LargestIconImage([string]$Path) {
