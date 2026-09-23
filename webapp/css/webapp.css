@@ -1,6 +1,7 @@
-/* webapp.css — the web version's own chrome (ARCHITECTURE §15): header toolbar, paste view,
-   drop overlay, toast and missing-image placeholders. The reader itself (layout, TOC,
-   content, code, alerts) is the desktop CSS, unchanged. Only tokens from tokens.css. */
+/* webapp.css — the web version's own chrome (ARCHITECTURE §15): header toolbar, the
+   Edit/Split/Read workspace (editor pane, draggable divider, split ratio), drop overlay,
+   toast and missing-image placeholders. The reader itself (layout, TOC, content, code,
+   alerts) is the desktop CSS, unchanged. Only tokens from tokens.css. */
 
 :root {
   --mdr-web-header-h: 56px;
@@ -31,13 +32,116 @@
   --mdr-web-toast-fg: #0D1117;
 }
 
-/* ---------- Views: paste (editor) vs reader (the desktop page) ---------- */
+/* ---------- Views: Edit / Split / Read ---------- */
 
-html[data-view="paste"] .mdr-layout,
-html[data-view="paste"] #mdr-banner,
-html[data-view="paste"] .mdr-web-reader-only,
-html[data-view="reader"] #mdr-web-paste {
+html[data-mode="edit"] .mdr-web-reader,
+html[data-mode="edit"] #mdr-web-divider,
+html[data-mode="edit"] .mdr-web-needs-preview {
   display: none;
+}
+
+html[data-mode="read"] #mdr-web-paste,
+html[data-mode="read"] #mdr-web-divider {
+  display: none;
+}
+
+.mdr-web-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.mdr-web-reader {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mdr-web-reader .mdr-layout {
+  min-width: 0;
+}
+
+/* ---------- Split mode: editor pane fills its share, divider between panes ---------- */
+
+html[data-mode="split"] #mdr-web-paste {
+  flex: 0 0 clamp(240px, var(--mdr-split-ratio, 45%), 80%);
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  background: var(--mdr-web-card);
+}
+
+html[data-mode="split"] .mdr-web-paste-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: var(--mdr-space-3);
+  gap: var(--mdr-space-2);
+}
+
+html[data-mode="split"] .mdr-web-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+html[data-mode="split"] .mdr-web-input {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  resize: none;
+}
+
+html[data-mode="split"] .mdr-web-privacy {
+  display: none;
+}
+
+.mdr-web-divider {
+  display: none;
+  flex: none;
+  width: 6px;
+  background: var(--mdr-border);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+html[data-mode="split"] .mdr-web-divider {
+  display: block;
+}
+
+.mdr-web-divider:hover,
+.mdr-web-divider:focus-visible {
+  background: var(--mdr-accent);
+  outline: none;
+}
+
+@media (max-width: 760px) {
+  html[data-mode="split"] .mdr-web-workspace {
+    flex-direction: column;
+  }
+
+  html[data-mode="split"] #mdr-web-paste {
+    flex: 0 0 42vh;
+    min-width: 0;
+    max-width: none;
+  }
+
+  html[data-mode="split"] .mdr-web-reader {
+    flex: 1 1 auto;
+    min-height: 0;
+    border-top: 1px solid var(--mdr-border);
+  }
+
+  html[data-mode="split"] .mdr-web-divider {
+    display: none;
+  }
 }
 
 /* ---------- Icons ---------- */
@@ -650,9 +754,19 @@ a.mdr-web-button {
   .mdr-web-header,
   .mdr-web-tabs,
   .mdr-web-paste,
+  #mdr-web-divider,
   .mdr-web-dropzone,
   .mdr-web-toast {
     display: none !important;
+  }
+
+  /* Print only the preview, regardless of Edit/Split/Read, and let it flow across pages
+     rather than staying clipped to the app's fixed-height scroll box (§10, print.css). */
+  .mdr-web-workspace,
+  .mdr-web-reader {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
   }
 }
 

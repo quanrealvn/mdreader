@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="light" data-style="colorful" data-view="paste">
+<html lang="en" data-theme="light" data-style="colorful" data-mode="edit">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -32,9 +32,24 @@
     </button>
 
     <div class="mdr-web-toolbar">
-      <button id="mdr-web-toc-toggle" class="mdr-web-button mdr-web-button--icon mdr-web-reader-only" type="button" aria-label="Contents">
+      <button id="mdr-web-toc-toggle" class="mdr-web-button mdr-web-button--icon mdr-web-needs-preview" type="button" aria-label="Contents">
         <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
       </button>
+
+      <div class="mdr-web-segmented" role="group" aria-label="View">
+        <button type="button" data-mode-choice="edit" aria-pressed="true">
+          <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+          <span class="mdr-web-label">Edit</span>
+        </button>
+        <button type="button" data-mode-choice="split" aria-pressed="false">
+          <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+          <span class="mdr-web-label">Split</span>
+        </button>
+        <button type="button" data-mode-choice="read" aria-pressed="false">
+          <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5c3-2 7-2 10 0 3-2 7-2 10 0v14c-3-2-7-2-10 0-3-2-7-2-10 0z"/><path d="M12 5v14"/></svg>
+          <span class="mdr-web-label">Read</span>
+        </button>
+      </div>
 
       <div class="mdr-web-segmented" role="group" aria-label="Theme">
         <button type="button" data-theme-choice="system" aria-pressed="true">
@@ -62,13 +77,13 @@
         </button>
       </div>
 
-      <button id="mdr-web-edit" class="mdr-web-button mdr-web-reader-only" type="button">
-        <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
-        <span class="mdr-web-label">Edit</span>
-      </button>
-      <button id="mdr-web-new" class="mdr-web-button mdr-web-reader-only" type="button">
+      <button id="mdr-web-new" class="mdr-web-button" type="button">
         <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         <span class="mdr-web-label">New</span>
+      </button>
+      <button id="mdr-web-print" class="mdr-web-button mdr-web-needs-preview" type="button" title="Print or save as PDF">
+        <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/></svg>
+        <span class="mdr-web-label">PDF</span>
       </button>
       <a id="mdr-web-download" class="mdr-web-button" href="https://github.com/quanrealvn/mdreader/releases/latest/download/MdReader-Setup.exe" title="MdReader for Windows" rel="noopener">
         <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
@@ -85,45 +100,51 @@
     </button>
   </div>
 
-  <section id="mdr-web-paste" class="mdr-web-paste" aria-label="Paste Markdown">
-    <div class="mdr-web-paste-inner">
-      <div class="mdr-web-editor">
-        <textarea id="mdr-web-input" class="mdr-web-input" spellcheck="false" autocomplete="off" aria-label="Markdown to read"
-          placeholder="Paste Markdown here"></textarea>
-        <div class="mdr-web-editor-bar">
-          <button id="mdr-web-render" class="mdr-web-button mdr-web-button--primary" type="button" title="Ctrl+Enter">
-            <span>Read</span>
-            <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-          </button>
-          <button id="mdr-web-open" class="mdr-web-button" type="button" title="Open a .md, .markdown or .txt file">
-            <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3"/></svg>
-            <span>Open file</span>
-          </button>
-          <span class="mdr-web-spacer"></span>
-          <span id="mdr-web-count" class="mdr-web-count" aria-live="off"></span>
-          <button id="mdr-web-clear" class="mdr-web-button mdr-web-button--quiet" type="button">Clear</button>
+  <div id="mdr-web-workspace" class="mdr-web-workspace">
+    <section id="mdr-web-paste" class="mdr-web-paste" aria-label="Markdown editor">
+      <div class="mdr-web-paste-inner">
+        <div class="mdr-web-editor">
+          <textarea id="mdr-web-input" class="mdr-web-input" spellcheck="false" autocomplete="off" aria-label="Markdown to read"
+            placeholder="Paste Markdown here"></textarea>
+          <div class="mdr-web-editor-bar">
+            <button id="mdr-web-render" class="mdr-web-button mdr-web-button--primary" type="button" title="Ctrl+Enter">
+              <span>Read</span>
+              <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </button>
+            <button id="mdr-web-open" class="mdr-web-button" type="button" title="Open a .md, .markdown or .txt file">
+              <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3"/></svg>
+              <span>Open file</span>
+            </button>
+            <span class="mdr-web-spacer"></span>
+            <span id="mdr-web-count" class="mdr-web-count" aria-live="off"></span>
+            <button id="mdr-web-clear" class="mdr-web-button mdr-web-button--quiet" type="button">Clear</button>
+          </div>
         </div>
+
+        <p class="mdr-web-privacy">Your text isn't stored on the server.</p>
+        <input id="mdr-web-file" type="file" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdwn,.txt,text/markdown,text/plain" multiple hidden>
       </div>
+    </section>
 
-      <p class="mdr-web-privacy">Your text isn't stored on the server.</p>
-      <input id="mdr-web-file" type="file" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdwn,.txt,text/markdown,text/plain" multiple hidden>
+    <div id="mdr-web-divider" class="mdr-web-divider" role="separator" aria-orientation="vertical" aria-label="Resize the editor" tabindex="0"></div>
+
+    <div id="mdr-web-reader" class="mdr-web-reader">
+      <div id="mdr-banner" class="mdr-banner" role="status" hidden></div>
+      <div class="mdr-layout">
+        <nav id="mdr-toc" class="mdr-toc" aria-label="Table of contents">
+          <div class="mdr-toc-header"><span>Contents</span><button id="mdr-toc-close" class="mdr-icon-button" aria-label="Hide contents"></button></div>
+          <ol id="mdr-toc-list" class="mdr-toc-list"></ol>
+        </nav>
+        <div id="mdr-toc-backdrop" class="mdr-toc-backdrop" hidden></div>
+        <main id="mdr-main" class="mdr-main">
+          <article id="mdr-content" class="markdown-body"></article>
+          <section id="mdr-error" class="mdr-error" hidden>
+            <h1 id="mdr-error-title"></h1><p id="mdr-error-message"></p><p id="mdr-error-path"></p>
+            <button id="mdr-error-retry">Try again</button>
+          </section>
+        </main>
+      </div>
     </div>
-  </section>
-
-  <div id="mdr-banner" class="mdr-banner" role="status" hidden></div>
-  <div class="mdr-layout">
-    <nav id="mdr-toc" class="mdr-toc" aria-label="Table of contents">
-      <div class="mdr-toc-header"><span>Contents</span><button id="mdr-toc-close" class="mdr-icon-button" aria-label="Hide contents"></button></div>
-      <ol id="mdr-toc-list" class="mdr-toc-list"></ol>
-    </nav>
-    <div id="mdr-toc-backdrop" class="mdr-toc-backdrop" hidden></div>
-    <main id="mdr-main" class="mdr-main">
-      <article id="mdr-content" class="markdown-body"></article>
-      <section id="mdr-error" class="mdr-error" hidden>
-        <h1 id="mdr-error-title"></h1><p id="mdr-error-message"></p><p id="mdr-error-path"></p>
-        <button id="mdr-error-retry">Try again</button>
-      </section>
-    </main>
   </div>
 
   <div id="mdr-web-dropzone" class="mdr-web-dropzone" hidden>

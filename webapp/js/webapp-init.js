@@ -2,7 +2,8 @@
 // first paint. Applies the visitor's saved preferences so there is no flash:
 //   data-theme  ?theme=light|dark (this visit only) > saved Light/Dark > the system setting
 //   data-style  ?style=colorful|classic (this visit only) > saved style > colorful
-//   data-view   "reader" when the active tab (session restore) has a document; else "paste"
+//   data-mode   saved Edit/Split/Read choice; else "read" when the active tab (session
+//               restore) has a document, "edit" otherwise
 (function () {
   var root = document.documentElement;
 
@@ -58,5 +59,9 @@
     return read("mdr.web.view") === "reader" && !!read("mdr.web.doc");
   }
 
-  root.setAttribute("data-view", activeTabHasDocument() ? "reader" : "paste");
+  var mode = read("mdr.web.mode");
+  if (mode !== "edit" && mode !== "split" && mode !== "read") {
+    mode = activeTabHasDocument() ? "read" : "edit";
+  }
+  root.setAttribute("data-mode", mode);
 })();
