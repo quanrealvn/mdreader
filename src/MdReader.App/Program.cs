@@ -190,7 +190,8 @@ public static class Program
 
                 shutdown.Run("the main window is closing");
             };
-            app.SessionEnding += (_, e) => shutdown.Run($"the Windows session is ending ({e.ReasonSessionEnding})");
+            app.SessionEnding += (_, e) =>
+                shutdown.Run($"the Windows session is ending ({e.ReasonSessionEnding})", saveUnsavedTabs: true);
 
             // Screenshots (--capture) and automated runs (--instance-id / MDREADER_TEST_MODE) must never steal focus from
             // whatever the user is doing. ShowActivated only affects this first Show: a second instance forwarding a file
@@ -350,8 +351,9 @@ public static class Program
         }
     }
 
-    /// Shutdown sequence (§4.11), run once, on the UI thread, before WPF destroys the main window: stop serving forwarded
-    /// files → record the window placement → freeze the tab session (so closing the tabs below doesn't empty it) → save the
+    /// Shutdown sequence (§4.11), run once, on the UI thread, before WPF destroys the main window: save unsaved editor text
+    /// when the Windows session is ending → stop serving forwarded files → record the window placement → freeze the tab
+    /// session (so closing the tabs below doesn't empty it) → save the
     /// settings → close every tab (find → session → WebView). Tearing the
     /// WebViews down here matters on logoff/shutdown and Restart Manager requests: once the session is ending the WebView2
     /// controllers become unusable, and WPF's own window teardown would otherwise still call into them
@@ -363,7 +365,11 @@ public static class Program
 
         public Action? StopForwarding { get; set; }
 
-        public void Run(string reason)
+        /// <param name="saveUnsavedTabs">
+        /// The Windows session is ending: nothing can be asked and the process may be killed in seconds, so unsaved
+        /// editor text is written to disk before the tabs close. The normal window close asks first instead (§4.10).
+        /// </param>
+        public void Run(string reason, bool saveUnsavedTabs = false)
         {
             if (_done)
             {
@@ -372,6 +378,11 @@ public static class Program
 
             _done = true;
             log.Write(AppLogLevel.Info, Category, $"Shutting down: {reason}");
+            if (saveUnsavedTabs)
+            {
+                Step("save the unsaved tabs", tabs.SaveDirtyTabsForSessionEnd);
+            }
+
             Step("stop the pipe server", () => StopForwarding?.Invoke());
             Step("record the window placement", () => placement.Save(window));
             Step("record the open tabs", () => session?.Freeze());

@@ -54,11 +54,20 @@ public static class LineEndings
         return Convert(text, Crlf);
     }
 
-    /// <summary>Every line ending as <paramref name="lineEnding"/>.</summary>
+    /// <summary>
+    /// Every line ending as <paramref name="lineEnding"/>, which must be <see cref="Crlf"/>, <see cref="Lf"/> or
+    /// <see cref="Cr"/>. Anything else (an empty string above all, which would silently glue the whole document into one
+    /// line) is a bug in the caller, not a conversion.
+    /// </summary>
     public static string Convert(string text, string lineEnding)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(lineEnding);
+        if (lineEnding is not (Crlf or Lf or Cr))
+        {
+            throw new ArgumentException(
+                $"A line ending must be \"\\r\\n\", \"\\n\" or \"\\r\", not \"{EscapeForMessage(lineEnding)}\".", nameof(lineEnding));
+        }
 
         if (!NeedsConversion(text, lineEnding))
         {
@@ -89,6 +98,9 @@ public static class LineEndings
 
         return builder.ToString();
     }
+
+    private static string EscapeForMessage(string value) =>
+        value.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
 
     private static bool NeedsConversion(string text, string lineEnding)
     {

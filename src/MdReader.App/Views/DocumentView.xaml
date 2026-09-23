@@ -32,6 +32,8 @@
                      AutomationProperties.Name="Markdown source"
                      AcceptsReturn="True"
                      AcceptsTab="True"
+                     IsReadOnly="True"
+                     IsReadOnlyCaretVisible="True"
                      TextWrapping="NoWrap"
                      HorizontalScrollBarVisibility="Auto"
                      VerticalScrollBarVisibility="Auto"
