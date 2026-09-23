@@ -2,13 +2,15 @@
 // plays for the page: after `ready` it posts theme, readingStyle and tocVisibility, renders
 // documents through POST /api/render and delivers the returned host messages unchanged
 // (except docId/version, which it owns), and answers the page's messages: link, copy,
-// tocVisibilityChanged, retry, log, drop, rendered. It also owns the web-only chrome: the
-// header toolbar, the tab strip, the paste view, file open / drop, and the toast.
+// tocVisibilityChanged, retry, log, drop, rendered, printModeReady, taskToggle. It also owns
+// the web-only chrome: the header toolbar, the tab strip, the Edit/Split/Read workspace
+// (editor pane, draggable divider, split ratio), file open / drop, and the toast.
 //
 // Tabs: each tab is one document {id, title, markdown, scrollTop} (plus in-memory-only
 // bookkeeping: docId/version for the protocol, a cached `payload` of host messages so
-// switching tabs never re-fetches, and `view` for whether it's showing paste or reader).
-// Only the active tab is rendered eagerly; others render on first activation.
+// switching tabs never re-fetches). The workspace view — Edit, Split or Read — is a single
+// global preference (like theme/style), not per tab: `mode` decides whether the editor pane,
+// the preview pane, or both are shown for whichever tab is active.
 //
 // Module-scoped state only (content ids can clobber window properties, §7.3).
 
@@ -19,9 +21,16 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const UNTITLED = "document.md"; // the title the server's renderer gives a document without an h1
 const APP_NAME = "MdReader";
 const TOAST_MS = 3200;
-const SAVE_DEBOUNCE_MS = 400;
+const SAVE_DEBOUNCE_MS = 400; // also used for the split view's live-preview debounce
+const PRINT_READY_TIMEOUT_MS = 1500; // fallback if `printModeReady` never arrives
 const TEXT_EXTENSIONS = /\.(md|markdown|mdown|mkd|mkdn|mdwn|txt|text)$/i;
 const TOAST_TOO_BIG_TO_KEEP = "Some documents are too large to keep after reload.";
+const DEFAULT_SPLIT_RATIO = 45;
+const MIN_SPLIT_RATIO = 20;
+const MAX_SPLIT_RATIO = 80;
+// A task checkbox's source line, e.g. "  - [ ] Buy milk" or "1. [x] Done" (Markdig's task
+// list syntax: a list marker, then `[ ]`/`[x]`/`[X]`). Group 2 is the marker character.
+const TASK_LINE = /^(\s*(?:[-*+]|\d+[.)])\s+)\[([ xX])\](.*)$/;
 
 const SESSION_KEY = "mdreader.session.v1";
 // Legacy single-document keys (pre-tabs), migrated once then removed.
@@ -31,6 +40,8 @@ const KEY_VIEW = "mdr.web.view";
 const KEY_THEME = "mdr.web.theme";
 const KEY_STYLE = "mdr.web.style";
 const KEY_TOC = "mdr.web.toc";
+const KEY_MODE = "mdr.web.mode";
+const KEY_RATIO = "mdr.web.ratio";
 
 const root = document.documentElement;
 const input = document.getElementById("mdr-web-input");
@@ -38,11 +49,14 @@ const countEl = document.getElementById("mdr-web-count");
 const fileInput = document.getElementById("mdr-web-file");
 const renderButton = document.getElementById("mdr-web-render");
 const tocToggleButton = document.getElementById("mdr-web-toc-toggle");
+const printButton = document.getElementById("mdr-web-print");
 const progress = document.getElementById("mdr-web-progress");
 const toastEl = document.getElementById("mdr-web-toast");
 const dropzone = document.getElementById("mdr-web-dropzone");
 const content = document.getElementById("mdr-content");
 const mdrMain = document.getElementById("mdr-main");
+const workspaceEl = document.getElementById("mdr-web-workspace");
+const dividerEl = document.getElementById("mdr-web-divider");
 const tabListEl = document.getElementById("mdr-web-tablist");
 const tabAddButton = document.getElementById("mdr-web-tab-add");
 const params = new URLSearchParams(window.location.search);
@@ -95,6 +109,9 @@ let tocEntries = 0;
 let toastTimer = 0;
 let draftTimer = 0;
 let saveTimer = 0;
+let liveTimer = 0;
+let printReadyTimer = 0;
+let dividerDragging = false;
 
 // Theme / style: a query parameter pins them for this visit (screenshots, links); otherwise
 // the saved choice. theme "system" follows prefers-color-scheme.
@@ -104,15 +121,25 @@ let themeChoice = queryTheme || oneOf(load(KEY_THEME), ["light", "dark"]) || "sy
 let styleChoice = queryStyle || oneOf(load(KEY_STYLE), ["classic"]) || "colorful";
 let tocVisible = load(KEY_TOC) !== "0";
 
+// data-mode was already set (no-flash) by webapp-init.js before this module ran; read it back
+// so both scripts agree on the same default without duplicating the heuristic.
+let mode = oneOf(root.getAttribute("data-mode"), ["edit", "split", "read"]) || "edit";
+let splitRatio = clampRatio(parseFloat(load(KEY_RATIO)));
+
 function oneOf(value, allowed) {
   return allowed.includes(value) ? value : null;
+}
+
+function clampRatio(value) {
+  if (!Number.isFinite(value)) return DEFAULT_SPLIT_RATIO;
+  return Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, value));
 }
 
 // ---------------------------------------------------------------------------------
 // tabs
 // ---------------------------------------------------------------------------------
 
-function createTab({ markdown = "", title = "Untitled", name = null, view } = {}) {
+function createTab({ markdown = "", title = "Untitled", name = null } = {}) {
   tabIdCounter += 1;
   docIdCounter += 1;
   return {
@@ -124,7 +151,6 @@ function createTab({ markdown = "", title = "Untitled", name = null, view } = {}
     scrollTop: 0,
     payload: null,
     version: 0,
-    view: view || (markdown.trim().length > 0 ? "reader" : "paste"),
     lastActive: 0,
   };
 }
@@ -143,7 +169,6 @@ function hydrateTab(raw) {
     scrollTop: typeof raw.scrollTop === "number" && raw.scrollTop >= 0 ? raw.scrollTop : 0,
     payload: null,
     version: 0,
-    view: markdown.trim().length > 0 ? "reader" : "paste",
     lastActive: 0,
   };
 }
@@ -169,57 +194,161 @@ function tocEntriesFromPayload(messages) {
 }
 
 // ---------------------------------------------------------------------------------
-// views
+// view mode: Edit / Split / Read
 // ---------------------------------------------------------------------------------
+//
+// `mode` is a single global preference, not per tab. The editor pane is visible whenever
+// mode !== "read"; the preview pane (the desktop reader page, `.mdr-web-reader`) is visible
+// whenever mode !== "edit". Split shows both, with a draggable divider setting the ratio.
+// renderTab() is only ever called while mode is "split" or "read" (the preview pane is the
+// only place a render is shown), so it never needs to know about `mode` itself.
 
-function setView(view) {
-  root.setAttribute("data-view", view);
-  if (view === "paste") document.title = APP_NAME;
-}
-
-function leaveActiveTab() {
+/** Saves whatever's currently on screen for the active tab back onto it, before the
+ * textarea/scroll position it reads from is about to change (tab switch or mode switch).
+ * If the editor was visible and its text has since diverged from the cached preview (typed
+ * in Edit mode, or the last keystroke hasn't reached the live-preview debounce yet in Split),
+ * the cached payload is invalidated so the next reveal re-renders instead of showing stale
+ * content. */
+function captureActiveTabState() {
   const tab = getActiveTab();
   if (!tab) return;
-  if (root.getAttribute("data-view") === "paste") {
+  if (mode !== "read" && input.value !== tab.markdown) {
     tab.markdown = input.value;
-  } else {
-    tab.scrollTop = mdrMain.scrollTop;
+    tab.payload = null;
   }
+  if (mode !== "edit") tab.scrollTop = mdrMain.scrollTop;
 }
 
-/** Shows the active tab: paste view for an empty/draft tab, reader view otherwise (rendering it first if needed). */
-function showActiveTab() {
-  cancelInFlight();
+function applyModeAttribute(newMode) {
+  mode = newMode;
+  root.setAttribute("data-mode", mode);
+  updateChoiceButtons();
+  save(KEY_MODE, mode);
+}
+
+/** Puts the active tab's content on screen for the current mode: fills the editor and/or
+ * delivers (or starts) its preview. Call after activeId or mode changes. */
+function syncUIToActiveTab() {
   const tab = getActiveTab();
   if (!tab) return;
-  if (tab.view !== "reader") {
-    setView("paste");
+  if (mode !== "read") {
     input.value = tab.markdown || "";
     updateCount();
-    return;
   }
-  if (tab.payload) {
-    setView("reader");
-    lastPayload = tab.payload;
-    tocEntries = tocEntriesFromPayload(tab.payload);
-    updateTocButton();
-    pendingScroll = { docId: tab.docId, version: tab.version, scrollTop: tab.scrollTop };
-    if (pageReady) deliverPayload(tab.payload);
-  } else {
-    renderTab(tab, tab.markdown, { immediateReaderView: true });
+  if (mode !== "edit") {
+    if (tab.payload) {
+      lastPayload = tab.payload;
+      tocEntries = tocEntriesFromPayload(tab.payload);
+      updateTocButton();
+      pendingScroll = { docId: tab.docId, version: tab.version, scrollTop: tab.scrollTop };
+      if (pageReady) deliverPayload(tab.payload);
+    } else {
+      renderTab(tab, tab.markdown);
+    }
   }
 }
 
-function showPasteForActiveTab({ focus = true } = {}) {
+function setMode(newMode) {
+  if (newMode === mode || !["edit", "split", "read"].includes(newMode)) return;
+  captureActiveTabState();
   cancelInFlight();
-  const tab = getActiveTab();
-  if (tab) {
-    tab.view = "paste";
-    input.value = tab.markdown || "";
+  applyModeAttribute(newMode);
+  syncUIToActiveTab();
+}
+
+// ---------------------------------------------------------------------------------
+// split divider (drag to resize, arrow keys for keyboard users)
+// ---------------------------------------------------------------------------------
+
+function applyRatio() {
+  workspaceEl.style.setProperty("--mdr-split-ratio", splitRatio + "%");
+  dividerEl.setAttribute("aria-valuenow", String(Math.round(splitRatio)));
+  dividerEl.setAttribute("aria-valuemin", String(MIN_SPLIT_RATIO));
+  dividerEl.setAttribute("aria-valuemax", String(MAX_SPLIT_RATIO));
+}
+
+applyRatio();
+
+dividerEl.addEventListener("pointerdown", (event) => {
+  if (mode !== "split") return;
+  dividerDragging = true;
+  try {
+    dividerEl.setPointerCapture(event.pointerId);
+  } catch {
+    // ignore: dragging still works from move/up events on the element
   }
-  setView("paste");
-  updateCount();
-  if (focus) input.focus();
+  event.preventDefault();
+});
+
+dividerEl.addEventListener("pointermove", (event) => {
+  if (!dividerDragging) return;
+  const rect = workspaceEl.getBoundingClientRect();
+  if (rect.width <= 0) return;
+  splitRatio = clampRatio(((event.clientX - rect.left) / rect.width) * 100);
+  applyRatio();
+});
+
+function endDividerDrag(event) {
+  if (!dividerDragging) return;
+  dividerDragging = false;
+  try {
+    dividerEl.releasePointerCapture(event.pointerId);
+  } catch {
+    // already released
+  }
+  save(KEY_RATIO, String(Math.round(splitRatio)));
+}
+
+dividerEl.addEventListener("pointerup", endDividerDrag);
+dividerEl.addEventListener("pointercancel", endDividerDrag);
+
+dividerEl.addEventListener("keydown", (event) => {
+  if (mode !== "split") return;
+  let delta = 0;
+  if (event.key === "ArrowLeft") delta = -2;
+  else if (event.key === "ArrowRight") delta = 2;
+  else return;
+  event.preventDefault();
+  splitRatio = clampRatio(splitRatio + delta);
+  applyRatio();
+  save(KEY_RATIO, String(Math.round(splitRatio)));
+});
+
+// ---------------------------------------------------------------------------------
+// live preview (split mode): re-render ~400ms after the last keystroke, skipping a
+// render cycle while one is already in flight (the next keystroke schedules another).
+// ---------------------------------------------------------------------------------
+
+function scheduleLivePreview() {
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(runLivePreview, SAVE_DEBOUNCE_MS);
+}
+
+function runLivePreview() {
+  if (mode !== "split" || inFlight) return;
+  const tab = getActiveTab();
+  if (!tab) return;
+  renderTab(tab, input.value);
+}
+
+// ---------------------------------------------------------------------------------
+// print / PDF
+// ---------------------------------------------------------------------------------
+
+function doPrint() {
+  clearTimeout(printReadyTimer);
+  printReadyTimer = 0;
+  window.print();
+}
+
+/** Asks the page to switch to print mode (light theme, diagrams re-rendered light) first,
+ * so the OS print/PDF dialog opens on output that already looks right; prints anyway after
+ * a short timeout if the page never acknowledges. */
+function requestPrint() {
+  if (mode === "edit") return; // no preview to print
+  clearTimeout(printReadyTimer);
+  deliver({ type: "printMode", enabled: true });
+  printReadyTimer = setTimeout(doPrint, PRINT_READY_TIMEOUT_MS);
 }
 
 // ---------------------------------------------------------------------------------
@@ -229,12 +358,13 @@ function showPasteForActiveTab({ focus = true } = {}) {
 function activateTab(id) {
   if (!tabs.some((t) => t.id === id)) return;
   if (id !== activeId) {
-    leaveActiveTab();
+    captureActiveTabState();
+    cancelInFlight();
     activeId = id;
   }
   const tab = getActiveTab();
   tab.lastActive = ++activityCounter;
-  showActiveTab();
+  syncUIToActiveTab();
   renderTabStrip();
   scheduleSessionSave();
 }
@@ -242,6 +372,7 @@ function activateTab(id) {
 function newTab() {
   const tab = createTab({});
   tabs.push(tab);
+  if (mode === "read") setMode("edit"); // a blank tab needs the editor, not an empty preview
   activateTab(tab.id);
   input.focus();
 }
@@ -257,10 +388,10 @@ function closeTab(id) {
     tab.payload = null;
     tab.title = "Untitled";
     tab.name = null;
-    tab.view = "paste";
     tab.scrollTop = 0;
     activeId = tab.id;
-    showActiveTab();
+    if (mode !== "edit") applyModeAttribute("edit"); // nothing left to preview
+    syncUIToActiveTab();
     renderTabStrip();
     scheduleSessionSave();
     return;
@@ -272,7 +403,7 @@ function closeTab(id) {
     const nextIdx = Math.min(idx, tabs.length - 1);
     activeId = tabs[nextIdx].id;
     getActiveTab().lastActive = ++activityCounter;
-    showActiveTab();
+    syncUIToActiveTab();
   }
   renderTabStrip();
   scheduleSessionSave();
@@ -286,9 +417,9 @@ function clearActiveTab() {
   tab.payload = null;
   tab.title = "Untitled";
   tab.name = null;
-  tab.view = "paste";
   input.value = "";
   updateCount();
+  if (mode === "split") renderTab(tab, "");
   renderTabStrip();
   scheduleSessionSave();
 }
@@ -452,7 +583,7 @@ function initSession() {
 }
 
 window.addEventListener("pagehide", () => {
-  leaveActiveTab();
+  captureActiveTabState();
   persistSession();
 });
 
@@ -514,24 +645,21 @@ function setBusy(busy) {
 }
 
 /** Renders `text` for `tab` through the API. Caches the result on the tab and, if it's still
- * the active tab, delivers it and schedules the scroll restore once content phase lands. */
-async function renderTab(tab, text, { immediateReaderView = false } = {}) {
+ * the active tab, delivers it and schedules the scroll restore once content phase lands.
+ * Only ever called while the preview pane is visible (mode "split" or "read"). */
+async function renderTab(tab, text) {
   cancelInFlight();
   tab.markdown = text;
 
   const body = JSON.stringify({ markdown: text });
   if (new Blob([body]).size > MAX_BODY_BYTES) {
-    if (tab.id === activeId) {
-      setView("reader");
-      showError(413, null);
-    }
+    if (tab.id === activeId) showError(413, null);
     return;
   }
 
   const controller = new AbortController();
   inFlight = controller;
   setBusy(true);
-  if (immediateReaderView && tab.id === activeId) setView("reader");
 
   let response;
   let payload = null;
@@ -548,10 +676,7 @@ async function renderTab(tab, text, { immediateReaderView = false } = {}) {
     if (controller.signal.aborted) return; // superseded or cancelled
     if (inFlight === controller) inFlight = null;
     setBusy(false);
-    if (tab.id === activeId) {
-      setView("reader");
-      showError(0, null);
-    }
+    if (tab.id === activeId) showError(0, null);
     console.warn("mdr: render request failed", err);
     return;
   }
@@ -562,10 +687,7 @@ async function renderTab(tab, text, { immediateReaderView = false } = {}) {
 
   if (!response.ok || !payload || !Array.isArray(payload.messages) || payload.messages.length === 0) {
     tab.payload = null;
-    if (tab.id === activeId) {
-      setView("reader");
-      showError(response.ok ? 500 : response.status, payload);
-    }
+    if (tab.id === activeId) showError(response.ok ? 500 : response.status, payload);
     return;
   }
 
@@ -584,10 +706,8 @@ async function renderTab(tab, text, { immediateReaderView = false } = {}) {
     return message;
   });
   tab.payload = messages;
-  tab.view = "reader";
 
   if (tab.id === activeId) {
-    setView("reader");
     lastPayload = messages;
     tocEntries = tocEntriesFromPayload(messages);
     updateTocButton();
@@ -631,7 +751,42 @@ function renderFromInput() {
   }
   const tab = getActiveTab();
   if (!tab) return;
-  renderTab(tab, text, { immediateReaderView: false });
+  if (mode === "edit") applyModeAttribute("read"); // reveal the preview; always render below
+  renderTab(tab, text);
+}
+
+// ---------------------------------------------------------------------------------
+// task list checkboxes (web -> host `taskToggle`, sent by web/js/tasks.js)
+// ---------------------------------------------------------------------------------
+
+/** Flips the first `[ ]`/`[x]` marker on `markdown`'s 1-based `line`. Returns the updated
+ * text, or null if that line no longer looks like a task list item. */
+function toggleTaskLine(markdown, line) {
+  const lines = markdown.split("\n");
+  const idx = line - 1;
+  if (idx < 0 || idx >= lines.length) return null;
+  const match = TASK_LINE.exec(lines[idx]);
+  if (!match) return null;
+  const mark = match[2] === " " ? "x" : " ";
+  lines[idx] = match[1] + "[" + mark + "]" + match[3];
+  return lines.join("\n");
+}
+
+function onTaskToggle(message) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const line = Number(message.line);
+  if (Number.isInteger(line) && line >= 1) {
+    const updated = toggleTaskLine(tab.markdown, line);
+    if (updated !== null) {
+      tab.markdown = updated;
+      if (mode !== "read") input.value = updated;
+      scheduleSessionSave();
+    }
+    // else: the line no longer looks like a task item (stale line number) — leave the text
+    // alone and just re-render below, which corrects whatever the click optimistically changed.
+  }
+  renderTab(tab, tab.markdown);
 }
 
 // ---------------------------------------------------------------------------------
@@ -676,14 +831,17 @@ async function openFiles(fileList) {
     }
     let tab = tabs.find((t) => t.name === file.name && t.markdown === text);
     if (!tab) {
-      tab = createTab({ markdown: text, name: file.name, title: file.name, view: "reader" });
+      tab = createTab({ markdown: text, name: file.name, title: file.name });
       tabs.push(tab);
     }
     if (firstTabId === null) firstTabId = tab.id;
   }
 
   renderTabStrip();
-  if (firstTabId !== null) activateTab(firstTabId);
+  if (firstTabId !== null) {
+    activateTab(firstTabId);
+    if (mode === "edit") setMode("read"); // show the opened file, not a blank editor
+  }
   scheduleSessionSave();
 }
 
@@ -771,7 +929,7 @@ attachHost((message, files) => {
     case "retry": {
       const tab = getActiveTab();
       if (tab && tab.markdown.trim().length > 0) renderTab(tab, tab.markdown);
-      else showPasteForActiveTab({ focus: false });
+      else if (mode !== "edit") setMode("edit");
       break;
     }
     case "log":
@@ -783,8 +941,14 @@ attachHost((message, files) => {
     case "rendered":
       onRendered(message);
       break;
+    case "printModeReady":
+      if (printReadyTimer) doPrint();
+      break;
+    case "taskToggle":
+      onTaskToggle(message);
+      break;
     default:
-      break; // printModeReady etc.: nothing to do on the web
+      break;
   }
 });
 
@@ -881,6 +1045,9 @@ function updateChoiceButtons() {
   for (const button of document.querySelectorAll("[data-style-choice]")) {
     button.setAttribute("aria-pressed", String(button.dataset.styleChoice === styleChoice));
   }
+  for (const button of document.querySelectorAll("[data-mode-choice]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.modeChoice === mode));
+  }
 }
 
 function updateTocButton() {
@@ -905,6 +1072,10 @@ for (const button of document.querySelectorAll("[data-style-choice]")) {
   });
 }
 
+for (const button of document.querySelectorAll("[data-mode-choice]")) {
+  button.addEventListener("click", () => setMode(button.dataset.modeChoice));
+}
+
 systemDark.addEventListener("change", () => {
   if (themeChoice === "system") postTheme();
 });
@@ -913,9 +1084,10 @@ tocToggleButton.addEventListener("click", () => {
   if (pageReady) deliver({ type: "tocToggle" });
 });
 
-document.getElementById("mdr-web-edit").addEventListener("click", () => showPasteForActiveTab());
+printButton.addEventListener("click", requestPrint);
+
 document.getElementById("mdr-web-new").addEventListener("click", () => newTab());
-document.getElementById("mdr-web-home").addEventListener("click", () => showPasteForActiveTab());
+document.getElementById("mdr-web-home").addEventListener("click", () => setMode("edit"));
 
 // ---------------------------------------------------------------------------------
 // paste view
@@ -944,15 +1116,19 @@ input.addEventListener("input", () => {
   clearTimeout(draftTimer);
   draftTimer = setTimeout(() => {
     const tab = getActiveTab();
-    if (tab && root.getAttribute("data-view") === "paste") {
+    if (tab && mode !== "read") {
       tab.markdown = input.value;
+      // Split mode's live preview (below) keeps the payload fresh on its own; Edit mode has
+      // no preview running, so the cached one is now stale until the next render.
+      if (mode === "edit") tab.payload = null;
       scheduleSessionSave();
     }
   }, SAVE_DEBOUNCE_MS);
+  if (mode === "split") scheduleLivePreview();
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && root.getAttribute("data-view") === "paste") {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && mode !== "read") {
     event.preventDefault();
     renderFromInput();
   }
@@ -968,4 +1144,4 @@ postReadingStyle();
 
 initSession();
 renderTabStrip();
-showActiveTab();
+syncUIToActiveTab();
