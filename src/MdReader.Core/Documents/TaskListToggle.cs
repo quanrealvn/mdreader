@@ -85,74 +85,92 @@ public static class TaskListToggle
     }
 
     /// <summary>
-    /// Index of the character between the brackets of the line's task marker, or -1 if the line isn't a task item:
-    /// optional indentation, a bullet (<c>-</c>, <c>+</c>, <c>*</c>) or an ordered marker (<c>1.</c>, <c>1)</c>), at least
-    /// one space or tab, then <c>[ ]</c>, <c>[x]</c> or <c>[X]</c> followed by a space, a tab or the end of the line.
+    /// Index of the character between the brackets of the line's task marker, or -1 if the line isn't a task item.
+    /// A task line is any number of block containers — a block-quote <c>&gt;</c>, or a bullet / ordered marker opening
+    /// a list that holds one — then the item's own bullet (<c>-</c>, <c>+</c>, <c>*</c>) or ordered marker (<c>1.</c>,
+    /// <c>1)</c>), at least one space or tab, then <c>[ ]</c>, <c>[x]</c> or <c>[X]</c> followed by a space, a tab or
+    /// the end of the line.
     /// </summary>
+    /// <remarks>
+    /// The container prefix is scanned past, never rewritten, so <c>&gt; - [ ] x</c>, <c>&gt; &gt; - [ ] x</c> and
+    /// <c>- &gt; - [ ] x</c> tick like a plain <c>- [ ] x</c>. The renderer gives each of those a live checkbox
+    /// carrying this line number (§4.1), so refusing them would leave a box that can be clicked but never written.
+    /// </remarks>
     private static int FindMarker(ReadOnlySpan<char> lineText)
     {
         var i = 0;
-        while (i < lineText.Length && (lineText[i] == ' ' || lineText[i] == '\t'))
+        while (true)
         {
-            i++;
-        }
-
-        if (i == lineText.Length)
-        {
-            return -1;
-        }
-
-        if (lineText[i] is '-' or '+' or '*')
-        {
-            i++;
-        }
-        else if (char.IsAsciiDigit(lineText[i]))
-        {
-            var digits = 0;
-            while (i < lineText.Length && char.IsAsciiDigit(lineText[i]) && digits < 9)
+            while (i < lineText.Length && (lineText[i] == ' ' || lineText[i] == '\t'))
             {
                 i++;
-                digits++;
             }
 
-            if (i >= lineText.Length || (lineText[i] != '.' && lineText[i] != ')'))
+            if (i >= lineText.Length)
             {
                 return -1;
             }
 
-            i++;
-        }
-        else
-        {
-            return -1;
-        }
+            if (lineText[i] == '>')
+            {
+                i++;
+                continue;
+            }
 
-        if (i >= lineText.Length || (lineText[i] != ' ' && lineText[i] != '\t'))
-        {
-            return -1;
-        }
+            if (lineText[i] is '-' or '+' or '*')
+            {
+                i++;
+            }
+            else if (char.IsAsciiDigit(lineText[i]))
+            {
+                var digits = 0;
+                while (i < lineText.Length && char.IsAsciiDigit(lineText[i]) && digits < 9)
+                {
+                    i++;
+                    digits++;
+                }
 
-        while (i < lineText.Length && (lineText[i] == ' ' || lineText[i] == '\t'))
-        {
-            i++;
-        }
+                if (i >= lineText.Length || (lineText[i] != '.' && lineText[i] != ')'))
+                {
+                    return -1;
+                }
 
-        if (i + 2 >= lineText.Length || lineText[i] != '[' || lineText[i + 2] != ']')
-        {
-            return -1;
-        }
+                i++;
+            }
+            else
+            {
+                return -1;
+            }
 
-        if (lineText[i + 1] is not (' ' or 'x' or 'X'))
-        {
-            return -1;
-        }
+            if (i >= lineText.Length || (lineText[i] != ' ' && lineText[i] != '\t'))
+            {
+                return -1;
+            }
 
-        var after = i + 3;
-        if (after < lineText.Length && lineText[after] != ' ' && lineText[after] != '\t')
-        {
-            return -1;
-        }
+            while (i < lineText.Length && (lineText[i] == ' ' || lineText[i] == '\t'))
+            {
+                i++;
+            }
 
-        return i + 1;
+            // No checkbox here: the marker only opened a list around what follows (a quote, another list), so keep
+            // scanning — the item that owns the checkbox is further along the same line.
+            if (i + 2 >= lineText.Length || lineText[i] != '[' || lineText[i + 2] != ']')
+            {
+                continue;
+            }
+
+            if (lineText[i + 1] is not (' ' or 'x' or 'X'))
+            {
+                continue;
+            }
+
+            var after = i + 3;
+            if (after < lineText.Length && lineText[after] != ' ' && lineText[after] != '\t')
+            {
+                return -1;
+            }
+
+            return i + 1;
+        }
     }
 }
