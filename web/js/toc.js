@@ -1,6 +1,6 @@
 // toc.js — sidebar table of contents: builds a collapsible, filterable, sortable tree
-// from `toc` entries, tracks the active heading with an IntersectionObserver, and
-// reports visibility changes.
+// from `toc` entries, tracks the active heading with an IntersectionObserver, owns the
+// panel's drag-to-resize handle, and reports visibility and width changes.
 //
 // Click-to-scroll is NOT wired here: entries are plain `a[href="#..."]` elements, and
 // links.js's single document-level click/auxclick listener (§7.3) already intercepts
@@ -15,6 +15,7 @@ const tocNav = document.getElementById("mdr-toc");
 const tocList = document.getElementById("mdr-toc-list");
 const tocClose = document.getElementById("mdr-toc-close");
 const tocBackdrop = document.getElementById("mdr-toc-backdrop");
+const tocResizer = document.getElementById("mdr-toc-resizer");
 
 // Below 900 CSS px the docked sidebar becomes an overlay drawer (§7.3). Two separate
 // pieces of state, two separate host messages (§7.2, final-review S1):
@@ -103,6 +104,146 @@ function requestClose() {
   updateVisibilityClass();
   send({ type: "tocVisibilityChanged", visible: false });
 }
+
+// ---------------------------------------------------------------------------------
+// Panel width — dragged (or keyed) on the handle at the panel's right edge, persisted
+// by the host (AppSettings.TocWidth, §4.6):
+//
+//  - `tocWidth` is the *preference*: what the user last chose, clamped to
+//    TOC_WIDTH_MIN..TOC_WIDTH_MAX. That is the number reported with `tocWidthChanged`
+//    and the number the host sends back with `tocVisibility`.
+//  - What is actually applied is additionally capped at half the window, so the panel
+//    can never swallow the document. Shrinking the window therefore narrows the panel
+//    without forgetting the preference; widening it again brings the width back.
+//  - The drawer (below 900 CSS px) has a fixed width and hides the handle (layout.css),
+//    so a drag can't start there.
+// ---------------------------------------------------------------------------------
+
+const TOC_WIDTH_DEFAULT = 260;
+const TOC_WIDTH_MIN = 180;
+const TOC_WIDTH_MAX = 560;
+const TOC_WIDTH_STEP = 16;
+const TOC_WIDTH_WINDOW_FRACTION = 0.5;
+
+let tocWidth = TOC_WIDTH_DEFAULT;
+let dragPointerId = null;
+let dragStartX = 0;
+let dragStartWidth = 0;
+let dragStartPreference = 0;
+
+function maxTocWidth() {
+  // Half of the row the panel shares with the document: the whole window in the app, the
+  // reader pane in the web version's split view. Falls back to the window when that row
+  // has no width yet (the reader pane is hidden in edit-only mode).
+  const layout = tocNav && tocNav.parentElement;
+  const available = layout && layout.clientWidth > 0 ? layout.clientWidth : window.innerWidth;
+  const half = Math.round(available * TOC_WIDTH_WINDOW_FRACTION);
+  return Math.max(TOC_WIDTH_MIN, Math.min(TOC_WIDTH_MAX, half));
+}
+
+/** The width currently on screen: the preference, capped at what the window allows. */
+function appliedTocWidth() {
+  return Math.min(tocWidth, maxTocWidth());
+}
+
+function applyTocWidth() {
+  const applied = appliedTocWidth();
+  document.documentElement.style.setProperty("--mdr-toc-width", applied + "px");
+  if (!tocResizer) return;
+  tocResizer.setAttribute("aria-valuenow", String(applied));
+  tocResizer.setAttribute("aria-valuemin", String(TOC_WIDTH_MIN));
+  tocResizer.setAttribute("aria-valuemax", String(maxTocWidth()));
+  tocResizer.setAttribute("aria-valuetext", applied + " pixels");
+}
+
+/**
+ * Applies the width carried by the host's `tocVisibility` message. A missing or
+ * unusable value leaves the current width alone.
+ */
+export function setTocWidth(width) {
+  const value = Number(width);
+  if (!Number.isFinite(value)) return;
+  tocWidth = Math.min(TOC_WIDTH_MAX, Math.max(TOC_WIDTH_MIN, Math.round(value)));
+  applyTocWidth();
+}
+
+/** A width the user just asked for: clamped to what the window allows, then applied. */
+function resizeTo(width) {
+  tocWidth = Math.min(maxTocWidth(), Math.max(TOC_WIDTH_MIN, Math.round(width)));
+  applyTocWidth();
+}
+
+function reportTocWidth() {
+  send({ type: "tocWidthChanged", width: tocWidth });
+}
+
+function endDrag(event) {
+  if (dragPointerId === null || event.pointerId !== dragPointerId) return;
+  try {
+    tocResizer.releasePointerCapture(dragPointerId);
+  } catch {
+    // the capture is already gone (pointercancel, element detached)
+  }
+  dragPointerId = null;
+  tocResizer.classList.remove("mdr-toc-resizer--active");
+  document.body.classList.remove("mdr-resizing");
+  if (tocWidth !== dragStartPreference) reportTocWidth();   // a click that moved nothing changes nothing
+}
+
+if (tocResizer) {
+  applyTocWidth();
+
+  tocResizer.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || isNarrow()) return;
+    event.preventDefault(); // no text selection, and the handle keeps the focus ring off a plain click
+    dragPointerId = event.pointerId;
+    dragStartX = event.clientX;
+    dragStartWidth = appliedTocWidth();
+    dragStartPreference = tocWidth;
+    try {
+      tocResizer.setPointerCapture(dragPointerId);
+    } catch {
+      // no active pointer with that id (synthetic events): the move handler still tracks it
+    }
+    tocResizer.focus();   // a click leaves the handle focused, so the arrow keys take over from there
+    tocResizer.classList.add("mdr-toc-resizer--active");
+    document.body.classList.add("mdr-resizing");
+  });
+
+  tocResizer.addEventListener("pointermove", (event) => {
+    if (dragPointerId === null || event.pointerId !== dragPointerId) return;
+    // The panel is on the left, so the pointer's x offset is the width delta.
+    resizeTo(dragStartWidth + (event.clientX - dragStartX));
+  });
+
+  tocResizer.addEventListener("pointerup", endDrag);
+  tocResizer.addEventListener("pointercancel", endDrag);
+
+  tocResizer.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    resizeTo(TOC_WIDTH_DEFAULT);
+    reportTocWidth();
+  });
+
+  tocResizer.addEventListener("keydown", (event) => {
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    const base = appliedTocWidth();
+    let next;
+    if (event.key === "ArrowLeft") next = base - TOC_WIDTH_STEP;
+    else if (event.key === "ArrowRight") next = base + TOC_WIDTH_STEP;
+    else if (event.key === "Home") next = TOC_WIDTH_MIN;
+    else if (event.key === "End") next = maxTocWidth();
+    else return;
+
+    event.preventDefault();
+    const before = tocWidth;
+    resizeTo(next);
+    if (tocWidth !== before) reportTocWidth();
+  });
+}
+
+// A narrower window caps the applied width; a wider one gives the preference back.
+window.addEventListener("resize", applyTocWidth);
 
 function cssEscapeId(value) {
   if (window.CSS && typeof CSS.escape === "function") return CSS.escape(value);

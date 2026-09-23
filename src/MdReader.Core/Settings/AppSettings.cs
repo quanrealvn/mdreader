@@ -27,6 +27,13 @@ public sealed record AppSettings
     public double Zoom { get; init; } = 1.0;                       // ZoomLevels.Min..Max
     public bool TocVisible { get; init; } = true;
 
+    /// Width of the docked contents panel in CSS px; clamped to MinTocWidth..MaxTocWidth.
+    public double TocWidth { get; init; } = DefaultTocWidth;
+
+    public const double DefaultTocWidth = 260;
+    public const double MinTocWidth = 180;
+    public const double MaxTocWidth = 560;
+
     /// Side-by-side editing: the view mode a new tab starts in (false = preview only).
     public bool SplitView { get; init; }
 

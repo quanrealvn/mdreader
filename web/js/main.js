@@ -9,7 +9,7 @@
 import { send, on, PROTOCOL, log } from "./bridge.js";
 import { scrollToFragment } from "./links.js";
 import "./links.js"; // side effect: installs the document-level click/auxclick/drop listeners
-import { renderToc, setTocVisible, toggleToc } from "./toc.js";
+import { renderToc, setTocVisible, setTocWidth, toggleToc } from "./toc.js";
 import { showError, hideError } from "./errorview.js";
 import { enhanceCode } from "./codeblocks.js";
 import { enhanceMath, enhanceDiagrams, setDiagramTheme } from "./enhance.js";
@@ -339,7 +339,10 @@ on("render", handleRender);
 on("renderPart", handleRenderPart);
 on("theme", (msg) => applyTheme(msg.theme === "dark" ? "dark" : "light"));
 on("scrollTo", (msg) => scrollToFragment(msg.id));
-on("tocVisibility", (msg) => setTocVisible(!!msg.visible));
+on("tocVisibility", (msg) => {
+  setTocVisible(!!msg.visible);
+  setTocWidth(msg.width);   // absent or unusable: the page keeps its current width
+});
 on("tocToggle", () => toggleToc());
 on("banner", (msg) => setBanner(msg.banner ?? null));
 on("error", (msg) => {

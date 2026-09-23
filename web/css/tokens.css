@@ -27,6 +27,9 @@
   --mdr-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.14);
   --mdr-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.24);
 
+  /* Contents panel: the docked width, kept in sync with AppSettings.TocWidth by toc.js. */
+  --mdr-toc-width: 260px;
+
   /* Motion */
   --mdr-duration-fast: 120ms;
   --mdr-duration-base: 200ms;

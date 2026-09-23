@@ -78,12 +78,48 @@ button {
 /* ---------- TOC sidebar ---------- */
 
 .mdr-toc {
+  position: relative;   /* containing block for the resize handle */
   flex: none;
-  width: 260px;
+  width: var(--mdr-toc-width);
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--mdr-border);
   background: var(--mdr-bg);
+}
+
+/* Drag handle on the panel's right edge. It straddles the border as a 6px grab area but
+   takes no layout width of its own (absolutely positioned), and paints above the content
+   column so the pointer finds it there. toc.js owns the width itself: pointer drag,
+   arrow keys (16px steps), Home/End and a double-click back to the default. */
+.mdr-toc-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  width: 6px;
+  z-index: 5;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;   /* the pointer events are the drag, never a scroll gesture */
+  transition: background-color var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.mdr-toc-resizer:hover,
+.mdr-toc-resizer--active {
+  background: var(--mdr-accent);
+}
+
+.mdr-toc-resizer:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--mdr-accent) 40%, transparent);
+}
+
+/* While a drag is running the pointer leaves the handle: keep the resize cursor and stop
+   the document underneath from selecting text. */
+body.mdr-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .mdr-toc--closed {
@@ -272,6 +308,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .mdr-toc,
   .mdr-toc-backdrop,
+  .mdr-toc-resizer,
   .mdr-icon-button,
   .mdr-toc-link,
   .mdr-toc-twisty,
@@ -296,7 +333,7 @@ button {
     bottom: 0;
     left: 0;
     z-index: 50;
-    width: min(85vw, 320px);
+    width: min(85vw, 320px);   /* the drawer has a fixed width: no resizing here */
     display: flex;
     box-shadow: var(--mdr-shadow-lg);
     transform: translateX(-100%);
@@ -310,6 +347,10 @@ button {
   .mdr-toc--closed {
     display: flex;
     box-shadow: none; /* off-screen, but its shadow would still bleed onto the content edge */
+  }
+
+  .mdr-toc-resizer {
+    display: none;
   }
 
   .mdr-toc-backdrop {
@@ -333,6 +374,7 @@ button {
 
 html.mdr-large .mdr-toc,
 html.mdr-large .mdr-toc-backdrop,
+html.mdr-large .mdr-toc-resizer,
 html.mdr-large .mdr-icon-button,
 html.mdr-large .mdr-toc-link,
 html.mdr-large .mdr-toc-twisty,

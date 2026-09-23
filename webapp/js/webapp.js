@@ -2,7 +2,7 @@
 // plays for the page: after `ready` it posts theme and tocVisibility, renders
 // documents through POST /api/render and delivers the returned host messages unchanged
 // (except docId/version, which it owns), and answers the page's messages: link, copy,
-// tocVisibilityChanged, retry, log, drop, rendered, printModeReady, taskToggle. It also owns
+// tocVisibilityChanged, tocWidthChanged, retry, log, drop, rendered, printModeReady, taskToggle. It also owns
 // the web-only chrome: the header toolbar, the tab strip, the Edit/Split/Read workspace
 // (editor pane, draggable divider, split ratio), file open / drop, and the toast.
 //
@@ -28,6 +28,9 @@ const TOAST_TOO_BIG_TO_KEEP = "Some documents are too large to keep after reload
 const DEFAULT_SPLIT_RATIO = 45;
 const MIN_SPLIT_RATIO = 20;
 const MAX_SPLIT_RATIO = 80;
+const DEFAULT_TOC_WIDTH = 260;
+const MIN_TOC_WIDTH = 180;
+const MAX_TOC_WIDTH = 560;
 // A task checkbox's source line, e.g. "  - [ ] Buy milk" or "1. [x] Done": optional
 // indentation, a bullet (-, +, *) or an ordered marker (1. / 1)), at least one space/tab,
 // then [ ]/[x]/[X], then a space/tab or end of line. Mirrors Core's TaskListToggle.FindMarker
@@ -42,6 +45,7 @@ const KEY_NAME = "mdr.web.name";
 const KEY_VIEW = "mdr.web.view";
 const KEY_THEME = "mdr.web.theme";
 const KEY_TOC = "mdr.web.toc";
+const KEY_TOC_WIDTH = "mdr.web.tocwidth";
 const KEY_MODE = "mdr.web.mode";
 const KEY_RATIO = "mdr.web.ratio";
 
@@ -120,6 +124,7 @@ let dividerDragging = false;
 const queryTheme = oneOf(params.get("theme"), ["light", "dark"]);
 let themeChoice = queryTheme || oneOf(load(KEY_THEME), ["light", "dark"]) || "system";
 let tocVisible = load(KEY_TOC) !== "0";
+let tocWidth = clampTocWidth(parseFloat(load(KEY_TOC_WIDTH)));
 
 // data-mode was already set (no-flash) by webapp-init.js before this module ran; read it back
 // so both scripts agree on the same default without duplicating the heuristic.
@@ -128,6 +133,13 @@ let splitRatio = clampRatio(parseFloat(load(KEY_RATIO)));
 
 function oneOf(value, allowed) {
   return allowed.includes(value) ? value : null;
+}
+
+function clampTocWidth(value) {
+  // Mirrors AppSettings.TocWidth on the desktop side (§4.6); the page caps it at half the
+  // window on top of this.
+  if (!Number.isFinite(value)) return DEFAULT_TOC_WIDTH;
+  return Math.min(MAX_TOC_WIDTH, Math.max(MIN_TOC_WIDTH, Math.round(value)));
 }
 
 function clampRatio(value) {
@@ -602,7 +614,7 @@ function postTheme() {
 }
 
 function postTocVisibility() {
-  if (pageReady) deliver({ type: "tocVisibility", visible: tocVisible });
+  if (pageReady) deliver({ type: "tocVisibility", visible: tocVisible, width: tocWidth });
 }
 
 function deliverPayload(messages) {
@@ -947,6 +959,10 @@ attachHost((message, files) => {
     case "tocVisibilityChanged":
       tocVisible = !!message.visible;
       save(KEY_TOC, tocVisible ? "1" : "0");
+      break;
+    case "tocWidthChanged":
+      tocWidth = clampTocWidth(Number(message.width));
+      save(KEY_TOC_WIDTH, String(tocWidth));
       break;
     case "retry": {
       const tab = getActiveTab();

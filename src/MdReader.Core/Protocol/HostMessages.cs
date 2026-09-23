@@ -28,7 +28,8 @@ public sealed record ThemeMessage(AppTheme Theme) : HostMessage;
 
 public sealed record ScrollToMessage(string Id) : HostMessage;
 
-public sealed record TocVisibilityMessage(bool Visible) : HostMessage;
+/// The persisted docked contents-panel state: whether it is shown and how wide it is (CSS px, §7.2).
+public sealed record TocVisibilityMessage(bool Visible, double Width) : HostMessage;
 
 public sealed record BannerMessage([property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] BannerInfo? Banner) : HostMessage;
 

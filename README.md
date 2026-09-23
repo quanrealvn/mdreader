@@ -20,7 +20,7 @@ To make MdReader your default for `.md` files, right-click one, choose **Open wi
 - Tabs that come back the next time you open it, and files that reload by themselves when you save them
 - Tick task-list checkboxes while reading, and they are saved back to the file
 - Side by side: type on the left, see it rendered on the right
-- Contents panel you can filter and sort, find, zoom, print and PDF export
+- Contents panel you can resize, filter and sort, find, zoom, print and PDF export
 - Light or dark theme
 
 ## Building it

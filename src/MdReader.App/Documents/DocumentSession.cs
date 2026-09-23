@@ -92,6 +92,7 @@ internal sealed class DocumentSession : IDisposable
     private BannerInfo? _reloadBanner;       // a live-reload failure while content stays visible
     private BannerInfo? _encodingBanner;
     private bool? _postedTocVisible;
+    private double? _postedTocWidth;
     private DocumentErrorKind? _hostErrorKind;
 
     private (bool Enabled, TaskCompletionSource Completion)? _printModeWaiter;
@@ -838,6 +839,7 @@ internal sealed class DocumentSession : IDisposable
         _postedCompleteVersion = 0;
         _postedBanner = null;
         _postedTocVisible = null;
+        _postedTocWidth = null;
         _printFallbackArmedAt = null;
     }
 
@@ -869,10 +871,12 @@ internal sealed class DocumentSession : IDisposable
             ResetPageState();
             AppSettings settings = _settings.Current;
             bool tocVisible = settings.TocVisible;
+            double tocWidth = settings.TocWidth;
             Post(new ThemeMessage(_theme.EffectiveTheme));
-            if (Post(new TocVisibilityMessage(tocVisible)))
+            if (Post(new TocVisibilityMessage(tocVisible, tocWidth)))
             {
                 _postedTocVisible = tocVisible;
+                _postedTocWidth = tocWidth;
             }
 
             _ = PostCurrentPayloadAsync();
@@ -913,6 +917,10 @@ internal sealed class DocumentSession : IDisposable
                 case TocVisibilityChangedMessage toc:
                     _postedTocVisible = toc.Visible;   // the page already shows it
                     _settings.Update(s => s.TocVisible == toc.Visible ? s : s with { TocVisible = toc.Visible });
+                    break;
+                case TocWidthChangedMessage tocWidth:
+                    _postedTocWidth = tocWidth.Width;   // the page is already that wide
+                    _settings.Update(s => s.TocWidth == tocWidth.Width ? s : s with { TocWidth = tocWidth.Width });
                     break;
                 case TaskToggleMessage taskToggle:
                     HandleTaskToggle(taskToggle);
@@ -1130,9 +1138,11 @@ internal sealed class DocumentSession : IDisposable
             return;
         }
 
-        if (_postedTocVisible != settings.TocVisible && Post(new TocVisibilityMessage(settings.TocVisible)))
+        if ((_postedTocVisible != settings.TocVisible || _postedTocWidth != settings.TocWidth)
+            && Post(new TocVisibilityMessage(settings.TocVisible, settings.TocWidth)))
         {
             _postedTocVisible = settings.TocVisible;
+            _postedTocWidth = settings.TocWidth;
         }
     }
 
