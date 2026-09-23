@@ -22,7 +22,8 @@ public interface IDocumentTab : INotifyPropertyChanged, IDisposable
     DocumentSessionState State { get; }
     ICommand CloseCommand { get; }         // → ITabHost.Close(this)
     Task SaveAsync();                      // Ctrl+S; no-op when the editor isn't open or isn't dirty
-    bool SaveBlocking();                   // same, synchronously (closing a tab or the window)
+    bool SaveBlocking();                   // same, synchronously (closing a tab or the window); asks about an overwrite
+    bool SaveForSessionEnd();              // logoff/shutdown: save synchronously, never ask
     Task ReloadAsync();
     void ScrollTo(string fragment);
     void ToggleToc();                      // posts `tocToggle` to this tab's page (final-review S1)

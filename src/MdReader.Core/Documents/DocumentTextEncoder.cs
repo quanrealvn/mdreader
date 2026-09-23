@@ -36,6 +36,38 @@ public static class DocumentTextEncoder
         return bytes;
     }
 
+    /// <summary>
+    /// True when writing <paramref name="text"/> with this encoding would replace characters it can't represent (a
+    /// legacy code page after the document picked up, say, an em dash). The Unicode encodings never lose anything, so
+    /// this is only ever true for a document that was decoded with a fallback code page.
+    /// </summary>
+    public static bool WouldReplaceCharacters(string text, string? encodingName)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        var (encoding, _) = Resolve(encodingName, hasBom: false);
+        if (encoding.CodePage is 65001 or 1200 or 1201 or 12000 or 12001)
+        {
+            return false;
+        }
+
+        try
+        {
+            // Counting is enough: the throwing encoder stops at the first character the code page has no byte for.
+            Encoding.GetEncoding(encoding.CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ReplacementFallback)
+                .GetByteCount(text);
+            return false;
+        }
+        catch (EncoderFallbackException)
+        {
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            return false;   // the encoding isn't available: Encode falls back to UTF-8, which loses nothing
+        }
+    }
+
     /// <summary>The encoding (without a BOM of its own) and the BOM bytes to prepend.</summary>
     internal static (Encoding Encoding, byte[] Bom) Resolve(string? encodingName, bool hasBom)
     {

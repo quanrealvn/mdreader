@@ -34,6 +34,7 @@ internal sealed class DocumentTabViewModel : IDocumentTab
     private readonly DocumentSession _session;
     private readonly ITabHost _tabHost;
     private readonly IDialogService _dialogs;
+    private readonly IStatusNotifier _status;
     private readonly IAppLog _log;
     private DocumentView? _view;
     private bool _isActive;
@@ -60,6 +61,7 @@ internal sealed class DocumentTabViewModel : IDocumentTab
         _session = session;
         _tabHost = tabHost;
         _dialogs = dialogs;
+        _status = status;
         _log = log;
         ViewServices = new DocumentViewServices(environment, settings, theme, paths, perf, status, log, time);
 
@@ -104,6 +106,8 @@ internal sealed class DocumentTabViewModel : IDocumentTab
     public bool IsDeleted => _isDeleted;
 
     /// Preview only, or Markdown source + preview (§4.10). The setting remembers the last mode a tab was put into.
+    /// Closing the pane while the buffer has unsaved changes is refused: the changes would still be there, and still be
+    /// saved when the tab closes, with nothing on screen to show for them.
     public bool IsSplitView
     {
         get => _isSplitView;
@@ -111,6 +115,13 @@ internal sealed class DocumentTabViewModel : IDocumentTab
         {
             if (_isSplitView == value || _disposed)
             {
+                return;
+            }
+
+            if (!value && _session.IsDirty)
+            {
+                _status.ShowStatus("Save (Ctrl+S) or reload (F5) before closing the editor: it has unsaved changes.");
+                OnPropertyChanged();   // the toolbar toggle snapped off: put it back
                 return;
             }
 
@@ -134,7 +145,41 @@ internal sealed class DocumentTabViewModel : IDocumentTab
 
     public Task SaveAsync() => _disposed || !_session.IsDirty ? Task.CompletedTask : SaveCoreAsync();
 
-    public bool SaveBlocking() => !_disposed && _session.IsDirty && _session.SaveBlocking();
+    /// Closing a tab or the window. Asks before overwriting a file that changed on disk, exactly as Ctrl+S does; saying
+    /// no returns false, which the caller reads as "don't close this tab".
+    public bool SaveBlocking()
+    {
+        if (_disposed || !_session.IsDirty)
+        {
+            return false;
+        }
+
+        if (_session.WouldOverwriteDiskChanges && !_dialogs.ConfirmOverwriteChangedFile(Header))
+        {
+            _log.Write(AppLogLevel.Info, Category, $"Not saving {FilePath} on close: the user declined to overwrite the newer file.");
+            return false;
+        }
+
+        return _session.SaveBlocking();
+    }
+
+    /// The Windows session is ending (§4.11): save the text, no questions — there is no one left to answer them, and
+    /// the alternative is throwing the text away.
+    public bool SaveForSessionEnd()
+    {
+        if (_disposed || !_session.IsDirty)
+        {
+            return false;
+        }
+
+        if (_session.WouldOverwriteDiskChanges)
+        {
+            _log.Write(AppLogLevel.Warning, Category,
+                $"{FilePath} changed on disk while it had unsaved changes; the Windows session is ending, so the editor's version wins.");
+        }
+
+        return _session.SaveBlocking();
+    }
 
     private async Task SaveCoreAsync()
     {
