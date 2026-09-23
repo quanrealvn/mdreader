@@ -1,0 +1,142 @@
+name: Release
+
+# Push a tag like v1.3.0 and this builds the Windows installer and the VS Code extension, hashes them and
+# attaches all three files to the GitHub release for that tag (creating the release if it isn't there yet).
+# The asset names are the ones README.md links to and must not change:
+#   MdReader-Setup.exe, mdreader-vscode.vsix, SHA256SUMS.txt
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+  # Pinned so a rebuilt release is the same build. installer\MdReader.iss requires 6.6 or later; bump this
+  # when a newer Inno Setup 6 is wanted.
+  INNO_SETUP_VERSION: '6.7.1'
+
+jobs:
+  release:
+    name: Installer, VSIX and checksums
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write # create the release for the tag and upload its assets
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v7
+        with:
+          # Full history so the annotated tag object (and its message) is available for the release body.
+          fetch-depth: 0
+
+      - name: Install the .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          # 10.0.400 with rollForward "latestFeature" in global.json: the newest 10.0 SDK is installed.
+          global-json-file: global.json
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-windows-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: |
+            nuget-windows-
+
+      - name: Install Inno Setup 6
+        # Chocolatey is preinstalled on the Windows runners. The package uses the official installer and
+        # lands in "C:\Program Files (x86)\Inno Setup 6", which installer\build.ps1 already looks in.
+        run: choco install innosetup --version=${{ env.INNO_SETUP_VERSION }} --yes --no-progress
+
+      - name: Check the tag against the product version
+        # Directory.Build.props holds the single source of truth for the version; build.ps1 takes it from
+        # there. A tag that disagrees is almost always a mistake, but it shouldn't stop the release.
+        run: |
+          $props = [xml](Get-Content -LiteralPath 'Directory.Build.props' -Raw)
+          $product = $props.SelectSingleNode('/Project/PropertyGroup/Version').InnerText.Trim()
+          $tag = $env:GITHUB_REF_NAME
+          if ($product -ne $tag.TrimStart('v')) {
+            Write-Output "::warning::Tag $tag doesn't match <Version>$product</Version> in Directory.Build.props; the installer will say $product."
+          }
+
+      - name: Build the Windows installer
+        # -SkipTests because the test projects are not in this repository. Output:
+        # installer\output\MdReader-Setup.exe (self-contained ReadyToRun publish, compiled by ISCC).
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1 -SkipTests
+
+      - name: Package the VS Code extension
+        working-directory: vscode-extension
+        # "package" runs vscode:prepublish (tsc) and then vsce package.
+        run: |
+          npm ci
+          npm run package
+
+      - name: Collect the assets and hash them
+        run: |
+          $setup = 'installer\output\MdReader-Setup.exe'
+          if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) {
+            throw "installer\build.ps1 didn't produce $setup."
+          }
+
+          # vsce names the file <name>-<version>.vsix (mdreader-vscode-1.0.0.vsix today); the release asset
+          # name has to stay mdreader-vscode.vsix because README.md links to /latest/download/ it.
+          $vsix = @(Get-ChildItem -Path 'vscode-extension' -Filter '*.vsix' -File)
+          if ($vsix.Count -ne 1) {
+            throw "Expected exactly one .vsix in vscode-extension, found $($vsix.Count)."
+          }
+
+          New-Item -ItemType Directory -Force -Path 'dist' | Out-Null
+          Copy-Item -LiteralPath $setup -Destination 'dist\MdReader-Setup.exe' -Force
+          Copy-Item -LiteralPath $vsix[0].FullName -Destination 'dist\mdreader-vscode.vsix' -Force
+
+          # sha256sum format: lower-case hash, two spaces, file name, LF endings and no BOM, so
+          # `sha256sum -c SHA256SUMS.txt` works on any machine.
+          $lines = foreach ($name in 'MdReader-Setup.exe', 'mdreader-vscode.vsix') {
+            $hash = (Get-FileHash -LiteralPath "dist\$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $name"
+          }
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD 'dist\SHA256SUMS.txt'),
+            (($lines -join "`n") + "`n"),
+            [Text.UTF8Encoding]::new($false))
+
+          Get-ChildItem 'dist' | Format-Table Name, Length
+          Get-Content -LiteralPath 'dist\SHA256SUMS.txt'
+
+      - name: Publish them on the release for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+
+          # gh exits non-zero when the release doesn't exist yet, and the runner's pwsh turns that into a
+          # terminating error ($ErrorActionPreference is Stop), so ask inside a try.
+          $existing = $null
+          try { $existing = gh release view $tag --json tagName --jq '.tagName' 2>$null } catch { }
+
+          if ([string]::IsNullOrWhiteSpace($existing)) {
+            # %(contents) is the annotated tag's message, or the commit message for a lightweight tag.
+            $body = ((git tag -l --format='%(contents)' $tag) -join "`n").Trim()
+            if ([string]::IsNullOrWhiteSpace($body)) { $body = "MdReader $tag" }
+            $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+            [IO.File]::WriteAllText($notes, $body + "`n", [Text.UTF8Encoding]::new($false))
+            gh release create $tag --title $tag --notes-file $notes
+          }
+          else {
+            Write-Output "Release $tag already exists; uploading into it."
+          }
+
+          gh release upload $tag 'dist\MdReader-Setup.exe' 'dist\mdreader-vscode.vsix' 'dist\SHA256SUMS.txt' --clobber
