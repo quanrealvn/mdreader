@@ -115,6 +115,10 @@ public static partial class DocumentErrorMessages
     /// <summary>Watcher reported Deleted: warning "The file was deleted or moved. Showing the last loaded version."</summary>
     public static BannerInfo DeletedBanner() => new(BannerKind.Warning, DeletedText);
 
+    /// <summary>The file changed on disk while the editor had unsaved changes; neither side is thrown away.</summary>
+    public static BannerInfo DiskChangedWhileEditingBanner() => new(BannerKind.Warning,
+        "The file changed on disk. Your unsaved changes are still here — press F5 to load the file, or Ctrl+S to overwrite it.");
+
     /// <summary>Decoder fallback: info "This file isn't valid UTF-8. It is shown as {encodingName}."</summary>
     public static BannerInfo FallbackEncodingBanner(string encodingName)
     {

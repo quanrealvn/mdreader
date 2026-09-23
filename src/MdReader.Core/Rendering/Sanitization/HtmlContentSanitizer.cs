@@ -37,25 +37,27 @@ internal sealed class HtmlContentSanitizer : IHtmlContentSanitizer
     public SanitizedHtml Sanitize(string html, RenderContext context, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(html);
-        return Sanitize(html, context, html.Length, cancellationToken);
+        return Sanitize(html, context, html.Length, null, cancellationToken);
     }
 
     /// <summary>
     /// As <see cref="Sanitize(string, RenderContext, CancellationToken)"/>, with the element and output budgets based on
     /// <paramref name="sourceLength"/> (the length of the Markdown the HTML was rendered from) as well as on the HTML, so
-    /// HTML that Markdig amplified doesn't earn a proportionally bigger budget.
+    /// HTML that Markdig amplified doesn't earn a proportionally bigger budget, and with the render's task-line token
+    /// (<paramref name="taskLinePrefix"/>, §4.1).
     /// </summary>
-    internal SanitizedHtml Sanitize(string html, RenderContext context, int sourceLength, CancellationToken cancellationToken)
+    internal SanitizedHtml Sanitize(string html, RenderContext context, int sourceLength, string? taskLinePrefix,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(html);
         ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var result = SanitizeOnce(html, context, sourceLength, cancellationToken, out var restructured);
+        var result = SanitizeOnce(html, context, sourceLength, taskLinePrefix, cancellationToken, out var restructured);
         if (restructured)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            result = SanitizeOnce(result.Html, context, sourceLength, cancellationToken, out _);
+            result = SanitizeOnce(result.Html, context, sourceLength, taskLinePrefix, cancellationToken, out _);
         }
 
         return result;
@@ -97,7 +99,8 @@ internal sealed class HtmlContentSanitizer : IHtmlContentSanitizer
     /// <exception cref="RenderLimitExceededException">The input nests too deeply, or the DOM or the output would exceed
     /// their budgets (<see cref="RenderLimits"/>).</exception>
     private SanitizedHtml SanitizeOnce(
-        string html, RenderContext context, int sourceLength, CancellationToken cancellationToken, out bool restructured)
+        string html, RenderContext context, int sourceLength, string? taskLinePrefix, CancellationToken cancellationToken,
+        out bool restructured)
     {
         restructured = false;
         if (html.Length == 0)
@@ -119,7 +122,7 @@ internal sealed class HtmlContentSanitizer : IHtmlContentSanitizer
         var body = GetBody(document);
         return body is null
             ? new SanitizedHtml(string.Empty, [])
-            : SanitizedHtmlWriter.Write(body, RenderLimits.OutputBudget(html.Length, sourceLength), cancellationToken);
+            : SanitizedHtmlWriter.Write(body, RenderLimits.OutputBudget(html.Length, sourceLength), taskLinePrefix, cancellationToken);
     }
 
     /// <summary>Per-call hook state: captures the document context, memoizes image URLs (each file is probed once).</summary>

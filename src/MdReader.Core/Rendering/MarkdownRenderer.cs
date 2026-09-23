@@ -3,6 +3,7 @@ using System.Text;
 using Markdig;
 using Markdig.Extensions.Mathematics;
 using Markdig.Extensions.Tables;
+using Markdig.Extensions.TaskLists;
 using Markdig.Extensions.Yaml;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
@@ -94,14 +95,14 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
         SanitizedHtml sanitized;
         try
         {
-            sanitized = _sanitizer.Sanitize(html, context, markdown.Length, cancellationToken);
+            sanitized = _sanitizer.Sanitize(html, context, markdown.Length, outline.TaskLinePrefix, cancellationToken);
         }
         catch (RenderLimitExceededException)
         {
             // HTML nesting depth, element budget or output budget exceeded (raw-HTML amplification).
             outline = DocumentOutline.Empty;
             html = RenderAsPlainText(markdown);
-            sanitized = _sanitizer.Sanitize(html, context, markdown.Length, cancellationToken);
+            sanitized = _sanitizer.Sanitize(html, context, markdown.Length, outline.TaskLinePrefix, cancellationToken);
         }
 
         var sanitizeTime = Stopwatch.GetElapsedTime(sanitizeStart);
@@ -125,7 +126,8 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
     {
         var state = new AnalysisState(cancellationToken);
         state.Visit(document);
-        return new DocumentOutline(state.Toc, state.Title, new RenderFeatures(state.Mermaid, state.Math, state.Code));
+        return new DocumentOutline(state.Toc, state.Title, new RenderFeatures(state.Mermaid, state.Math, state.Code),
+            state.TaskLinePrefix);
     }
 
     private static (DocumentOutline Outline, string Html, TimeSpan ParseTime, TimeSpan HtmlTime) PlainTextFallback(
@@ -168,7 +170,12 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
         exception.TargetSite?.DeclaringType?.Assembly == typeof(Markdown).Assembly;
 
     /// <summary>Result of the AST pass.</summary>
-    internal sealed record DocumentOutline(IReadOnlyList<TocEntry> Toc, string? Title, RenderFeatures Features)
+    /// <param name="TaskLinePrefix">
+    /// The per-render token that prefixes every <c>data-line</c> this pass wrote, or null when the document has no task
+    /// list. Only checkboxes whose attribute carries it keep their line number through the sanitizer (§4.1).
+    /// </param>
+    internal sealed record DocumentOutline(IReadOnlyList<TocEntry> Toc, string? Title, RenderFeatures Features,
+        string? TaskLinePrefix = null)
     {
         public static DocumentOutline Empty { get; } = new([], null, new RenderFeatures(false, false, false));
     }
@@ -182,6 +189,9 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
         public bool Mermaid { get; private set; }
         public bool Math { get; private set; }
         public bool Code { get; private set; }
+
+        /// <summary>Created on the first task item found, so documents without task lists pay nothing.</summary>
+        public string? TaskLinePrefix { get; private set; }
 
         /// <summary>Pre-order walk (document order). Markdig caps nesting depth, so recursion is bounded.</summary>
         public void Visit(Block block)
@@ -210,6 +220,9 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
                 case CodeBlock:
                     Code = true;
                     break;
+                case ListItemBlock item:
+                    MarkTaskListLine(item);
+                    break;
             }
 
             if (!Math && block is LeafBlock { Inline: { } inline } && ContainsMath(inline))
@@ -224,6 +237,34 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
                     Visit(container[i]);
                 }
             }
+        }
+
+        /// <summary>
+        /// A task item's checkbox gets the 1-based source line of its list item, behind the per-render token
+        /// (<see cref="TaskListLineRenderer"/>). Markdig only parses <c>[ ]</c> as a task marker at the very start of a
+        /// list item's first paragraph, so looking at that one inline is enough — and cheap.
+        /// </summary>
+        private void MarkTaskListLine(ListItemBlock item)
+        {
+            if (item.Count == 0 || item[0] is not LeafBlock { Inline: { } inline })
+            {
+                return;
+            }
+
+            Inline? node = inline.FirstChild;
+            if (node is LiteralInline literal && literal.Content.IsEmptyOrWhitespace())
+            {
+                node = node.NextSibling;
+            }
+
+            if (node is not TaskList task)
+            {
+                return;
+            }
+
+            TaskLinePrefix ??= Guid.NewGuid().ToString("N");
+            var line = (item.Line + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            task.GetAttributes().AddProperty(TaskListLineRenderer.LineAttribute, TaskLinePrefix + ":" + line);
         }
 
         private void VisitHeading(HeadingBlock heading)

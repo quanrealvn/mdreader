@@ -38,6 +38,17 @@ public static class TextDecoder
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     }
 
+    /// <summary>
+    /// True if the bytes start with one of the byte order marks <see cref="Decode"/> recognizes. Saving re-emits exactly
+    /// the BOM the file had (<see cref="DocumentTextEncoder"/>); the encoding name alone can't say, because UTF-16/32 are
+    /// also detected without one.
+    /// </summary>
+    public static bool HasByteOrderMark(ReadOnlySpan<byte> bytes) =>
+        bytes.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF])
+        || bytes.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE])
+        || bytes.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xFF])
+        || bytes.StartsWith((ReadOnlySpan<byte>)[0x00, 0x00, 0xFE, 0xFF]);
+
     public static TextDecodeResult Decode(ReadOnlySpan<byte> bytes, int fallbackCodePage = 1252)
     {
         // 1. Byte order marks. UTF-32 LE (FF FE 00 00) must be checked before UTF-16 LE (FF FE).

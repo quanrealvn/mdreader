@@ -32,6 +32,8 @@ public partial class DocumentView : UserControl
     private const string RestartRequiredMessage = "Restart MdReader to continue.";
 
     private readonly DocumentTabViewModel? _tab;
+    private bool _splitView;
+    private bool _suppressEditorChange;
     private WebView2? _webView;
     private WebViewBridge? _bridge;
     private Window? _window;
@@ -68,6 +70,7 @@ public partial class DocumentView : UserControl
         FindBarControl.Attach(() => _bridge?.Core, FocusWebView, services.Status, services.Log);
 
         tab.Session.StateChanged += OnSessionStateChanged;
+        tab.Session.EditorTextReplaced += OnEditorTextReplaced;
         services.Theme.EffectiveThemeChanged += OnEffectiveThemeChanged;
         services.Settings.Changed += OnSettingsChanged;
         Loaded += OnLoaded;
@@ -96,6 +99,120 @@ public partial class DocumentView : UserControl
         }
     }
 
+    // ----------------------------------------------------------------------------------------------------------------
+    // Split view (§4.10)
+
+    internal bool IsSplitView => _splitView;
+
+    /// Shows or hides the editor pane. Opening it seeds the text box from the session's buffer and focuses it.
+    internal void SetSplitView(bool enabled)
+    {
+        if (_disposed || _tab is null || _splitView == enabled)
+        {
+            return;
+        }
+
+        _splitView = enabled;
+        if (enabled)
+        {
+            string text = _tab.Session.BeginEditing();
+            if (!string.Equals(EditorBox.Text, text, StringComparison.Ordinal))
+            {
+                SetEditorText(text);
+            }
+
+            ApplySplitRatio(_tab.ViewServices.Settings.Current.SplitRatio);
+            EditorBox.Visibility = Visibility.Visible;
+            EditorSplitter.Visibility = Visibility.Visible;
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+            {
+                if (!_disposed && _splitView && IsVisible)
+                {
+                    EditorBox.Focus();
+                }
+            });
+        }
+        else
+        {
+            EditorBox.Visibility = Visibility.Collapsed;
+            EditorSplitter.Visibility = Visibility.Collapsed;
+            EditorColumn.Width = new GridLength(0);
+            SplitterColumn.Width = new GridLength(0);
+            PreviewColumn.Width = new GridLength(1, GridUnitType.Star);
+            _tab.Session.EndEditing();   // keeps the buffer while it is dirty, so reopening the pane restores it
+            FocusWebViewDeferred();
+        }
+    }
+
+    private void ApplySplitRatio(double ratio)
+    {
+        double clamped = Math.Clamp(ratio, AppSettings.MinSplitRatio, AppSettings.MaxSplitRatio);
+        EditorColumn.Width = new GridLength(clamped, GridUnitType.Star);
+        SplitterColumn.Width = GridLength.Auto;
+        PreviewColumn.Width = new GridLength(1 - clamped, GridUnitType.Star);
+    }
+
+    private void SetEditorText(string text)
+    {
+        _suppressEditorChange = true;
+        try
+        {
+            EditorBox.Text = text;
+        }
+        finally
+        {
+            _suppressEditorChange = false;
+        }
+    }
+
+    private void OnEditorTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_disposed || _tab is null || _suppressEditorChange || !_splitView)
+        {
+            return;
+        }
+
+        _tab.Session.SetEditorText(EditorBox.Text);
+    }
+
+    /// The session replaced the buffer (reload, save, a ticked checkbox): adopt it without losing the caret.
+    private void OnEditorTextReplaced(object? sender, string text)
+    {
+        if (_disposed || !_splitView || string.Equals(EditorBox.Text, text, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        int caret = EditorBox.CaretIndex;
+        int firstVisibleLine = EditorBox.GetFirstVisibleLineIndex();
+        SetEditorText(text);
+        EditorBox.CaretIndex = Math.Min(caret, text.Length);
+        if (firstVisibleLine > 0)
+        {
+            EditorBox.ScrollToLine(Math.Min(firstVisibleLine, Math.Max(0, EditorBox.LineCount - 1)));
+        }
+    }
+
+    private void OnSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        if (_disposed || _tab is null || !_splitView)
+        {
+            return;
+        }
+
+        double editor = EditorColumn.ActualWidth;
+        double preview = PreviewColumn.ActualWidth;
+        double total = editor + preview;
+        if (total <= 0)
+        {
+            return;
+        }
+
+        double ratio = Math.Clamp(editor / total, AppSettings.MinSplitRatio, AppSettings.MaxSplitRatio);
+        ApplySplitRatio(ratio);
+        _tab.ViewServices.Settings.Update(s => Math.Abs(s.SplitRatio - ratio) < 0.005 ? s : s with { SplitRatio = ratio });
+    }
+
     /// Last step of the tab's Dispose (§4.11): after the find session and the DocumentSession.
     internal void DisposeWebView()
     {
@@ -107,6 +224,7 @@ public partial class DocumentView : UserControl
         _disposed = true;
         DocumentViewServices services = _tab.ViewServices;
         _tab.Session.StateChanged -= OnSessionStateChanged;
+        _tab.Session.EditorTextReplaced -= OnEditorTextReplaced;
         services.Theme.EffectiveThemeChanged -= OnEffectiveThemeChanged;
         services.Settings.Changed -= OnSettingsChanged;
         Loaded -= OnLoaded;
@@ -548,8 +666,18 @@ public partial class DocumentView : UserControl
         Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
         {
             // Only inside an active window: focusing the WebView of a background window could steal activation.
-            if (!_disposed && _webViewInitialized && IsVisible && !FindBarControl.IsKeyboardFocusWithin
-                && Window.GetWindow(this) is { IsActive: true })
+            if (_disposed || !IsVisible || FindBarControl.IsKeyboardFocusWithin || Window.GetWindow(this) is not { IsActive: true })
+            {
+                return;
+            }
+
+            if (_splitView)
+            {
+                EditorBox.Focus();   // in split view the editor is where the user is working
+                return;
+            }
+
+            if (_webViewInitialized)
             {
                 FocusWebView();
             }

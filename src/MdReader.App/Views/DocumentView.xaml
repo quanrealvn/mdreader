@@ -16,8 +16,52 @@
 
         <views:FindBar x:Name="FindBarControl" Grid.Row="0" />
 
-        <!-- Holds the tab's WebView2 (AutomationId "WebView"), created in code. -->
-        <Grid x:Name="WebViewHost" Grid.Row="1" />
+        <!-- Split view (§4.10): the Markdown source on the left, the preview on the right. Both left columns collapse to
+             zero width in preview-only mode, so the WebView keeps the whole area and is never re-parented. -->
+        <Grid x:Name="SplitGrid" Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="EditorColumn" Width="0" />
+                <ColumnDefinition x:Name="SplitterColumn" Width="0" />
+                <ColumnDefinition x:Name="PreviewColumn" Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <TextBox x:Name="EditorBox"
+                     Grid.Column="0"
+                     Visibility="Collapsed"
+                     AutomationProperties.AutomationId="EditorTextBox"
+                     AutomationProperties.Name="Markdown source"
+                     AcceptsReturn="True"
+                     AcceptsTab="True"
+                     TextWrapping="NoWrap"
+                     HorizontalScrollBarVisibility="Auto"
+                     VerticalScrollBarVisibility="Auto"
+                     FontFamily="Cascadia Mono, Consolas, Courier New"
+                     FontSize="13"
+                     Padding="10,8"
+                     BorderThickness="0"
+                     UndoLimit="200"
+                     SpellCheck.IsEnabled="False"
+                     Background="{DynamicResource Brush.Document.Background}"
+                     Foreground="{DynamicResource Brush.Foreground}"
+                     CaretBrush="{DynamicResource Brush.Foreground}"
+                     TextChanged="OnEditorTextChanged" />
+
+            <GridSplitter x:Name="EditorSplitter"
+                          Grid.Column="1"
+                          Width="6"
+                          Visibility="Collapsed"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          ResizeBehavior="PreviousAndNext"
+                          Focusable="False"
+                          AutomationProperties.AutomationId="EditorSplitter"
+                          AutomationProperties.Name="Resize the editor"
+                          Background="{DynamicResource Brush.Border}"
+                          DragCompleted="OnSplitterDragCompleted" />
+
+            <!-- Holds the tab's WebView2 (AutomationId "WebView"), created in code. -->
+            <Grid x:Name="WebViewHost" Grid.Column="2" />
+        </Grid>
 
         <Border x:Name="HostErrorPanel"
                 Grid.Row="1"

@@ -31,14 +31,20 @@ internal static class SanitizedHtmlWriter
     /// Offsets are those of the top-level nodes the output parses back into: nodes that produce no output get none, and
     /// adjacent top-level text nodes (left behind when an element between them was removed) count as one node.
     /// </remarks>
-    public static SanitizedHtml Write(IElement body, CancellationToken cancellationToken) => Write(body, long.MaxValue, cancellationToken);
+    public static SanitizedHtml Write(IElement body, CancellationToken cancellationToken) =>
+        Write(body, long.MaxValue, null, cancellationToken);
 
-    /// <summary>As <see cref="Write(IElement, CancellationToken)"/>, with an output budget (<see cref="RenderLimits.OutputBudget"/>).</summary>
+    /// <summary>
+    /// As <see cref="Write(IElement, CancellationToken)"/>, with an output budget (<see cref="RenderLimits.OutputBudget"/>)
+    /// and the render's task-line token: a checkbox whose <c>data-line</c> starts with
+    /// <paramref name="taskLinePrefix"/><c>:</c> keeps the line number and stays enabled; every other <c>input</c> is
+    /// rebuilt as a disabled checkbox, so document HTML can't forge the attribute (§4.1).
+    /// </summary>
     /// <exception cref="RenderLimitExceededException">The output would be longer than <paramref name="maxOutputLength"/>.</exception>
-    internal static SanitizedHtml Write(IElement body, long maxOutputLength, CancellationToken cancellationToken)
+    internal static SanitizedHtml Write(IElement body, long maxOutputLength, string? taskLinePrefix, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(body);
-        var writer = new Writer(maxOutputLength, cancellationToken);
+        var writer = new Writer(maxOutputLength, taskLinePrefix, cancellationToken);
         var offsets = new List<int>();
         var children = body.ChildNodes;
         var previousWasText = false;
@@ -254,8 +260,40 @@ internal static class SanitizedHtmlWriter
     }
 
     /// <summary>The per-call serializer state.</summary>
-    private sealed class Writer(long maxOutputLength, CancellationToken cancellationToken)
+    private sealed class Writer(long maxOutputLength, string? taskLinePrefix, CancellationToken cancellationToken)
     {
+        /// <summary>The digits of a pipeline-issued <c>data-line</c>, or null (author HTML, or no task list).</summary>
+        private ReadOnlySpan<char> TaskLine(IElement element)
+        {
+            if (taskLinePrefix is null || element.GetAttribute("data-line") is not { } value)
+            {
+                return default;
+            }
+
+            if (value.Length <= taskLinePrefix.Length + 1
+                || !value.StartsWith(taskLinePrefix, StringComparison.Ordinal)
+                || value[taskLinePrefix.Length] != ':')
+            {
+                return default;
+            }
+
+            var digits = value.AsSpan(taskLinePrefix.Length + 1);
+            if (digits.Length > 9)
+            {
+                return default;
+            }
+
+            foreach (var c in digits)
+            {
+                if (!char.IsAsciiDigit(c))
+                {
+                    return default;
+                }
+            }
+
+            return digits;
+        }
+
         private Frame[] _stack = new Frame[32];
         private int _depth;
         private int _nodeCount;
@@ -317,8 +355,18 @@ internal static class SanitizedHtmlWriter
                 case ElementAction.Drop:
                     return;
                 case ElementAction.WriteCheckbox:
-                    // Rebuilt from scratch: nothing but the checked state survives.
-                    Output.Append("<input type=\"checkbox\" disabled=\"\"");
+                    // Rebuilt from scratch: nothing but the checked state and a pipeline-issued line number survives.
+                    Output.Append("<input type=\"checkbox\"");
+                    var taskLine = TaskLine(element);
+                    if (taskLine.IsEmpty)
+                    {
+                        Output.Append(" disabled=\"\"");
+                    }
+                    else
+                    {
+                        Output.Append(" data-line=\"").Append(taskLine).Append('"');
+                    }
+
                     if (element.HasAttribute("checked"))
                     {
                         Output.Append(" checked=\"\"");

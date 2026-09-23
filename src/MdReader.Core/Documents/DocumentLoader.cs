@@ -127,7 +127,10 @@ public sealed class DocumentLoader : IDocumentLoader
             return new DocumentLoadFailed(path, DocumentLoadError.Binary, DocumentErrorMessages.BinaryDetail);
         }
 
-        return new DocumentLoaded(path, decoded.Text, decoded.EncodingName, decoded.UsedFallbackEncoding, total, lastWriteTimeUtc);
+        return new DocumentLoaded(path, decoded.Text, decoded.EncodingName, decoded.UsedFallbackEncoding, total, lastWriteTimeUtc)
+        {
+            HasBom = TextDecoder.HasByteOrderMark(buffer.AsSpan(0, total)),
+        };
     }
 
     private static bool IsSharingViolation(IOException ex) => ex.HResult is ErrorSharingViolation or ErrorLockViolation;

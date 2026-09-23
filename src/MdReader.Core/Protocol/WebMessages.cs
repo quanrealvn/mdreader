@@ -12,6 +12,7 @@ namespace MdReader.Core.Protocol;
 [JsonDerivedType(typeof(LogMessage), "log")]
 [JsonDerivedType(typeof(PrintModeReadyMessage), "printModeReady")]
 [JsonDerivedType(typeof(DropMessage), "drop")]
+[JsonDerivedType(typeof(TaskToggleMessage), "taskToggle")]
 public abstract record WebMessage;
 
 public sealed record ReadyMessage(int Protocol) : WebMessage;
@@ -31,6 +32,10 @@ public sealed record LogMessage(WebLogLevel Level, string Message) : WebMessage;
 public sealed record PrintModeReadyMessage(bool Enabled) : WebMessage;
 
 public sealed record DropMessage : WebMessage;   // files arrive in CoreWebView2WebMessageReceivedEventArgs.AdditionalObjects
+
+/// The user ticked a task-list checkbox. Line is the 1-based source line the checkbox was rendered from (its data-line,
+/// §4.1); Version is the render that box belongs to, so a stale click on an outdated page is ignored.
+public sealed record TaskToggleMessage(int Line, bool Checked, int Version) : WebMessage;
 
 public enum RenderPhase { [JsonStringEnumMemberName("content")] Content, [JsonStringEnumMemberName("enhanced")] Enhanced }
 
