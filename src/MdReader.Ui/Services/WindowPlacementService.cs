@@ -39,6 +39,7 @@ public sealed class WindowPlacementService
     private readonly CommandLineOptions _options;
     private readonly IAppLog _log;
     private Rect? _lastNormalBounds;
+    private bool _lastNonMinimizedMaximized;
 
     public WindowPlacementService(SettingsCoordinator settings, CommandLineOptions options, IAppLog log)
     {
@@ -95,18 +96,19 @@ public sealed class WindowPlacementService
             return;
         }
 
-        bool maximized = window.WindowState == WindowState.Maximized;
+        // Minimized windows restore to the state they had before being minimized; a maximized window is saved with the
+        // rectangle it will return to.
+        bool maximized = window.WindowState switch
+        {
+            WindowState.Maximized => true,
+            WindowState.Minimized => _lastNonMinimizedMaximized,
+            _ => false,
+        };
         Rect? bounds = window.WindowState == WindowState.Normal ? CurrentBounds(window) : _lastNormalBounds;
         if (bounds is not { } rect || rect.Width <= 0 || rect.Height <= 0
             || !double.IsFinite(rect.Width) || !double.IsFinite(rect.Height))
         {
             return;
-        }
-
-        // Minimized windows restore to the state they had before being minimized.
-        if (window.WindowState == WindowState.Minimized)
-        {
-            maximized = _settings.Current.Window?.IsMaximized ?? false;
         }
 
         var placement = new WindowPlacement(rect.X, rect.Y, rect.Width, rect.Height, maximized);
@@ -159,6 +161,7 @@ public sealed class WindowPlacementService
     private void TrackNormalBounds(Window window)
     {
         _lastNormalBounds = null;
+        _lastNonMinimizedMaximized = window.WindowState == WindowState.Maximized;
         window.PositionChanged += (_, _) => CaptureNormalBounds(window);
         window.PropertyChanged += (_, e) =>
         {
@@ -171,7 +174,12 @@ public sealed class WindowPlacementService
 
     private void CaptureNormalBounds(Window window)
     {
-        if (window.WindowState == WindowState.Normal && CurrentBounds(window) is { } bounds && bounds is { Width: > 0, Height: > 0 })
+        if (window.WindowState != WindowState.Minimized)
+        {
+            _lastNonMinimizedMaximized = window.WindowState == WindowState.Maximized;
+        }
+
+        if (window.WindowState == WindowState.Normal && CurrentBounds(window) is { Width: > 0, Height: > 0 } bounds)
         {
             _lastNormalBounds = bounds;
         }
