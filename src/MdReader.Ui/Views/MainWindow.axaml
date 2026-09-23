@@ -8,6 +8,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:MdReader.Ui.Views"
         xmlns:cmd="clr-namespace:MdReader.Shell.Commands;assembly=MdReader.Shell"
+        xmlns:ui="clr-namespace:MdReader.Ui.Commands"
         xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
         x:Class="MdReader.Ui.Views.MainWindow"
         Title="{Binding WindowTitle}"
@@ -96,28 +97,28 @@
             <MenuFlyout Placement="BottomEdgeAlignedRight">
               <MenuItem Header="_Save" Command="{Binding SaveCommand}"
                         automation:AutomationProperties.AutomationId="SaveMenuItem"
-                        InputGesture="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[SaveMenuItem]}">
+                        InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[SaveMenuItem]}">
                 <MenuItem.Icon>
                   <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE74E;" />
                 </MenuItem.Icon>
               </MenuItem>
               <MenuItem Header="_Reload" Command="{Binding ReloadCommand}"
                         automation:AutomationProperties.AutomationId="ReloadMenuItem"
-                        InputGesture="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[ReloadMenuItem]}">
+                        InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[ReloadMenuItem]}">
                 <MenuItem.Icon>
                   <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE72C;" />
                 </MenuItem.Icon>
               </MenuItem>
               <MenuItem Header="_Print…" Command="{Binding PrintCommand}"
                         automation:AutomationProperties.AutomationId="PrintMenuItem"
-                        InputGesture="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[PrintMenuItem]}">
+                        InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[PrintMenuItem]}">
                 <MenuItem.Icon>
                   <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE749;" />
                 </MenuItem.Icon>
               </MenuItem>
               <MenuItem Header="_Export as PDF…" Command="{Binding ExportPdfCommand}"
                         automation:AutomationProperties.AutomationId="ExportPdfMenuItem"
-                        InputGesture="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[ExportPdfMenuItem]}">
+                        InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[ExportPdfMenuItem]}">
                 <MenuItem.Icon>
                   <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xEA90;" />
                 </MenuItem.Icon>

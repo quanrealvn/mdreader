@@ -9,7 +9,14 @@
              RequestedThemeVariant="Light">
 
   <Application.Styles>
-    <FluentTheme />
+    <!-- Fluent derives focus rings, selection and caret colours from the OS accent, which is whatever the user picked.
+         Pointing it at the palette's own accent keeps the chrome on the §10 colours, the way the WPF shell does. -->
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Light" Accent="#0969DA" />
+        <ColorPaletteResources x:Key="Dark" Accent="#4493F8" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
   </Application.Styles>
 
   <Application.Resources>

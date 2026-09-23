@@ -87,7 +87,6 @@ public partial class DocumentView : UserControl, IDocumentTabView
         tab.Session.StateChanged += OnSessionStateChanged;
         services.Theme.EffectiveThemeChanged += OnEffectiveThemeChanged;
         services.Settings.Changed += OnSettingsChanged;
-        Loaded += OnLoaded;
 
         // handledEventsToo: F3/Esc must reach the find bar even if the window-level shortcut router marked them handled.
         AddHandler(KeyDownEvent, OnPreviewKeyDownInView, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -241,7 +240,6 @@ public partial class DocumentView : UserControl, IDocumentTabView
         _tab.Session.EditorTextReplaced -= OnEditorTextReplaced;
         services.Theme.EffectiveThemeChanged -= OnEffectiveThemeChanged;
         services.Settings.Changed -= OnSettingsChanged;
-        Loaded -= OnLoaded;
         EditorBox.TextChanged -= OnEditorTextChanged;
         RemoveHandler(KeyDownEvent, OnPreviewKeyDownInView);
         if (_window is not null)
@@ -297,23 +295,28 @@ public partial class DocumentView : UserControl, IDocumentTabView
         _webViewInitialized = false;
     }
 
-    private async void OnLoaded(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// Starts the tab's web view as soon as the view joins the window's visual tree. It deliberately does not wait for
+    /// <c>Loaded</c>: Avalonia raises that from the layout pass, and a background tab is never laid out, so its document
+    /// would only start loading the first time the user switched to it. The native host window is created on attach
+    /// either way, which is what the controller needs.
+    /// </summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        base.OnAttachedToVisualTree(e);
         if (_disposed || _tab is null)
         {
             return;
         }
 
         AttachToWindow();
-
-        // Loaded can fire again (e.g. after the host is re-templated); the WebView is initialized exactly once here.
         if (_initStarted)
         {
             return;
         }
 
         _initStarted = true;
-        await InitializeWebViewAsync();
+        _ = InitializeWebViewAsync();
     }
 
     private async Task InitializeWebViewAsync()

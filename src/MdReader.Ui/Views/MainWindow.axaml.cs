@@ -192,8 +192,7 @@ public partial class MainWindow : Window
     /// if its 4 s are left.
     private void UpdateStatusPopup()
     {
-        bool show = _viewModel is not null && _viewModel.IsStatusVisible && IsVisible && IsActive
-                    && WindowState != WindowState.Minimized;
+        bool show = _viewModel.IsStatusVisible && IsVisible && IsActive && WindowState != WindowState.Minimized;
         if (StatusPopup.IsOpen != show)
         {
             StatusPopup.IsOpen = show;
