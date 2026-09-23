@@ -91,6 +91,8 @@ public sealed class JsonSettingsStore : ISettingsStore
             Zoom = dto.Zoom ?? defaults.Zoom,
             TocVisible = dto.TocVisible ?? defaults.TocVisible,
             ReadingStyle = dto.ReadingStyle ?? defaults.ReadingStyle,
+            SplitView = dto.SplitView ?? defaults.SplitView,
+            SplitRatio = dto.SplitRatio ?? defaults.SplitRatio,
             Window = dto.Window ?? defaults.Window,
             RecentFiles = dto.RecentFiles ?? defaults.RecentFiles,
             Session = dto.Session ?? defaults.Session,

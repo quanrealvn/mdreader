@@ -26,6 +26,8 @@ internal enum ShortcutAction
     ZoomReset,
     Reload,
     ToggleToc,
+    ToggleSplitView,
+    Save,
 }
 
 /// The shortcut map (§4.12) and the single MainWindow.PreviewKeyDown router.
@@ -70,6 +72,8 @@ public sealed class KeyboardShortcuts
         new(Key.NumPad0, Ctrl, ShortcutAction.ZoomReset, AllowRepeat: false),
         new(Key.F5, ModifierKeys.None, ShortcutAction.Reload, AllowRepeat: false),
         new(Key.B, Ctrl, ShortcutAction.ToggleToc, AllowRepeat: false),
+        new(Key.E, Ctrl, ShortcutAction.ToggleSplitView, AllowRepeat: false),
+        new(Key.S, Ctrl, ShortcutAction.Save, AllowRepeat: false),
     ];
 
     /// Tooltip text keyed by AutomationId, e.g. ToolTips["OpenButton"] == "Open (Ctrl+O)". Used from XAML via x:Static.
@@ -79,6 +83,8 @@ public sealed class KeyboardShortcuts
         ["RecentButton"] = "Recent files",
         ["TocToggleButton"] = Describe("Table of contents", ShortcutAction.ToggleToc),
         ["FindButton"] = Describe("Find", ShortcutAction.Find),
+        ["ExportPdfButton"] = Describe("Export PDF", ShortcutAction.ExportPdf),
+        ["SplitViewButton"] = Describe("Split view", ShortcutAction.ToggleSplitView),
         ["ZoomOutButton"] = Describe("Zoom out", ShortcutAction.ZoomOut),
         ["ZoomResetButton"] = Describe("Reset zoom", ShortcutAction.ZoomReset),
         ["ZoomInButton"] = Describe("Zoom in", ShortcutAction.ZoomIn),
@@ -93,6 +99,7 @@ public sealed class KeyboardShortcuts
     /// Menu InputGestureText keyed by AutomationId, e.g. MenuGestures["ReloadMenuItem"] == "F5".
     public static IReadOnlyDictionary<string, string> MenuGestures { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        ["SaveMenuItem"] = GestureText(ShortcutAction.Save),
         ["ReloadMenuItem"] = GestureText(ShortcutAction.Reload),
         ["PrintMenuItem"] = GestureText(ShortcutAction.Print),
         ["ExportPdfMenuItem"] = GestureText(ShortcutAction.ExportPdf),
@@ -203,6 +210,8 @@ public sealed class KeyboardShortcuts
             ShortcutAction.ZoomReset => vm.ZoomResetCommand,
             ShortcutAction.Reload => vm.ReloadCommand,
             ShortcutAction.ToggleToc => vm.ToggleTocCommand,
+            ShortcutAction.ToggleSplitView => vm.ToggleSplitViewCommand,
+            ShortcutAction.Save => vm.SaveCommand,
             _ => null,
         };
 

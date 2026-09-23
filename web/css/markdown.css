@@ -230,9 +230,9 @@
   list-style: none;
 }
 
-/* Custom-painted rather than native: disabled checkboxes (every task-list checkbox
-   is emitted `disabled`) ignore `accent-color` in Chromium and paint as a solid
-   filled square instead of an outlined box, which looks broken in light theme. */
+/* Custom-painted rather than native: a native checkbox ignores `accent-color` when it
+   is disabled (author HTML) and paints as a solid filled square instead of an outlined
+   box, which looks broken in light theme. */
 .markdown-body .task-list-item input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
@@ -245,6 +245,21 @@
   background-color: var(--mdr-bg);
   border: 1px solid var(--mdr-border);
   border-radius: 3px;
+}
+
+/* Boxes the renderer produced can be ticked (the click is sent back to the host and
+   written to the file); author-written ones stay disabled and inert. */
+.markdown-body .task-list-item input[type="checkbox"][data-line] {
+  cursor: pointer;
+}
+
+.markdown-body .task-list-item input[type="checkbox"][data-line]:hover {
+  border-color: var(--mdr-accent);
+}
+
+.markdown-body .task-list-item input[type="checkbox"][data-line]:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 1px;
 }
 
 .markdown-body .task-list-item input[type="checkbox"]:checked {

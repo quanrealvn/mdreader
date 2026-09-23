@@ -39,6 +39,8 @@ internal sealed class DocumentTabViewModel : IDocumentTab
     private bool _isActive;
     private string _title;
     private bool _isDeleted;
+    private bool _isSplitView;
+    private bool _isDirty;
     private DocumentSessionState _state;
     private bool _disposed;
 
@@ -67,7 +69,9 @@ internal sealed class DocumentTabViewModel : IDocumentTab
         _isDeleted = session.IsDeleted;
         _state = session.State;
         CloseCommand = new CloseTabCommand(this);
+        _isSplitView = settings.Current.SplitView;
         _session.StateChanged += OnSessionStateChanged;
+        _session.DirtyChanged += OnSessionDirtyChanged;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -99,6 +103,25 @@ internal sealed class DocumentTabViewModel : IDocumentTab
 
     public bool IsDeleted => _isDeleted;
 
+    /// Preview only, or Markdown source + preview (§4.10). The setting remembers the last mode a tab was put into.
+    public bool IsSplitView
+    {
+        get => _isSplitView;
+        set
+        {
+            if (_isSplitView == value || _disposed)
+            {
+                return;
+            }
+
+            _isSplitView = value;
+            _view?.SetSplitView(value);
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsDirty => _isDirty;
+
     public DocumentSessionState State => _state;
 
     public ICommand CloseCommand { get; }
@@ -108,6 +131,20 @@ internal sealed class DocumentTabViewModel : IDocumentTab
     internal DocumentViewServices ViewServices { get; }
 
     internal DocumentView? View => _view;
+
+    public Task SaveAsync() => _disposed || !_session.IsDirty ? Task.CompletedTask : SaveCoreAsync();
+
+    public bool SaveBlocking() => !_disposed && _session.IsDirty && _session.SaveBlocking();
+
+    private async Task SaveCoreAsync()
+    {
+        if (_session.WouldOverwriteDiskChanges && !_dialogs.ConfirmOverwriteChangedFile(Header))
+        {
+            return;
+        }
+
+        await _session.SaveAsync();
+    }
 
     public Task ReloadAsync() => _disposed ? Task.CompletedTask : _session.ReloadAsync(preserveScroll: true);
 
@@ -167,6 +204,10 @@ internal sealed class DocumentTabViewModel : IDocumentTab
         }
 
         _view = view;
+        if (_isSplitView)
+        {
+            view.SetSplitView(true);
+        }
     }
 
     /// §4.11 order: find session → DocumentSession (watcher, CTS) → WebView2.
@@ -189,6 +230,7 @@ internal sealed class DocumentTabViewModel : IDocumentTab
         }
 
         _session.StateChanged -= OnSessionStateChanged;
+        _session.DirtyChanged -= OnSessionDirtyChanged;
         try
         {
             _session.Dispose();
@@ -206,6 +248,17 @@ internal sealed class DocumentTabViewModel : IDocumentTab
         {
             _log.Write(AppLogLevel.Warning, Category, "Disposing the WebView failed.", ex);
         }
+    }
+
+    private void OnSessionDirtyChanged(object? sender, EventArgs e)
+    {
+        if (_isDirty == _session.IsDirty)
+        {
+            return;
+        }
+
+        _isDirty = _session.IsDirty;
+        OnPropertyChanged(nameof(IsDirty));
     }
 
     private void OnSessionStateChanged(object? sender, EventArgs e)

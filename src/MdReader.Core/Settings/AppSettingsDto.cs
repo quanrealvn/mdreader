@@ -27,6 +27,9 @@ public sealed class AppSettingsDto
     [JsonConverter(typeof(ReadingStyleSettingConverter))]
     public ReadingStyle? ReadingStyle { get; init; }
 
+    public bool? SplitView { get; init; }
+    public double? SplitRatio { get; init; }
+
     public WindowPlacement? Window { get; init; }
     public IReadOnlyList<string>? RecentFiles { get; init; }
 

@@ -28,6 +28,13 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
         <ContextMenu x:Key="MoreMenu" AutomationProperties.Name="More options">
+            <MenuItem Header="_Save" Command="{Binding SaveCommand}"
+                      AutomationProperties.AutomationId="SaveMenuItem"
+                      InputGestureText="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[SaveMenuItem]}">
+                <MenuItem.Icon>
+                    <TextBlock Style="{StaticResource MenuIconStyle}" Text="&#xE74E;" />
+                </MenuItem.Icon>
+            </MenuItem>
             <MenuItem Header="_Reload" Command="{Binding ReloadCommand}"
                       AutomationProperties.AutomationId="ReloadMenuItem"
                       InputGestureText="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[ReloadMenuItem]}">
@@ -114,6 +121,14 @@
                         Command="{Binding FindCommand}"
                         AutomationProperties.AutomationId="FindButton" AutomationProperties.Name="Find"
                         ToolTip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[FindButton]}" />
+                <Button x:Name="ExportPdfButton" Style="{StaticResource IconButtonStyle}" Content="&#xEA90;"
+                        Command="{Binding ExportPdfCommand}"
+                        AutomationProperties.AutomationId="ExportPdfButton" AutomationProperties.Name="Export PDF"
+                        ToolTip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[ExportPdfButton]}" />
+                <ToggleButton x:Name="SplitViewButton" Style="{StaticResource IconToggleButtonStyle}" Content="&#xE745;"
+                              IsChecked="{Binding IsSplitView, Mode=TwoWay}" IsEnabled="{Binding HasTabs}"
+                              AutomationProperties.AutomationId="SplitViewButton" AutomationProperties.Name="Split view"
+                              ToolTip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[SplitViewButton]}" />
                 <Button x:Name="ThemeButton" Style="{StaticResource IconButtonStyle}" Content="{Binding ThemeGlyph}"
                         Command="{Binding CycleThemeCommand}"
                         AutomationProperties.AutomationId="ThemeButton" AutomationProperties.Name="Theme"

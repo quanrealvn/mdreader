@@ -13,6 +13,7 @@ import { renderToc, setTocVisible, toggleToc } from "./toc.js";
 import { showError, hideError } from "./errorview.js";
 import { enhanceCode } from "./codeblocks.js";
 import { enhanceMath, enhanceDiagrams, setDiagramTheme } from "./enhance.js";
+import { initTasks, setTaskVersion } from "./tasks.js";
 
 const LARGE_DOC_CHARS = 1_000_000;
 const SCROLL_REAPPLY_MS = 500;
@@ -83,6 +84,7 @@ function applyAssembly() {
   const a = assembling;
   assembling = null;
   applied = { docId: a.docId, version: a.version };
+  setTaskVersion(a.version);
   const renderCtx = { docId: a.docId, version: a.version, start: a.startedAt };
   renderContent(a.html.join(""), a, renderCtx);
 }
@@ -336,6 +338,8 @@ window.addEventListener("securitypolicyviolation", (event) => {
 // ---------------------------------------------------------------------------------
 // wiring + ready
 // ---------------------------------------------------------------------------------
+
+initTasks(mdrContent);
 
 on("render", handleRender);
 on("renderPart", handleRenderPart);

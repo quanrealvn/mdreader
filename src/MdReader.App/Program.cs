@@ -174,12 +174,21 @@ public static class Program
             var shutdown = new OrderlyShutdown(window, services.GetRequiredService<WindowPlacementService>(),
                                                services.GetRequiredService<SettingsCoordinator>(),
                                                services.GetRequiredService<MainViewModel>(), session, log);
+            var mainViewModel = services.GetRequiredService<MainViewModel>();
             window.Closing += (_, e) =>
             {
-                if (!e.Cancel)
+                if (e.Cancel)
                 {
-                    shutdown.Run("the main window is closing");
+                    return;
                 }
+
+                if (!mainViewModel.ConfirmCloseAllTabs())
+                {
+                    e.Cancel = true;   // unsaved edits and the user chose Cancel (§4.10)
+                    return;
+                }
+
+                shutdown.Run("the main window is closing");
             };
             app.SessionEnding += (_, e) => shutdown.Run($"the Windows session is ending ({e.ReasonSessionEnding})");
 

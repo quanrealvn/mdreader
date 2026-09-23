@@ -17,8 +17,12 @@ public interface IDocumentTab : INotifyPropertyChanged, IDisposable
     string Title { get; }                  // rendered title ("" until rendered) → window title
     bool IsActive { get; set; }            // set only by ITabHost
     bool IsDeleted { get; }
+    bool IsSplitView { get; set; }         // preview only (false) or Markdown source + preview (true)
+    bool IsDirty { get; }                  // the editor has unsaved changes (the tab shows a dot)
     DocumentSessionState State { get; }
     ICommand CloseCommand { get; }         // → ITabHost.Close(this)
+    Task SaveAsync();                      // Ctrl+S; no-op when the editor isn't open or isn't dirty
+    bool SaveBlocking();                   // same, synchronously (closing a tab or the window)
     Task ReloadAsync();
     void ScrollTo(string fragment);
     void ToggleToc();                      // posts `tocToggle` to this tab's page (final-review S1)

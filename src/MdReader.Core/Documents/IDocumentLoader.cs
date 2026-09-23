@@ -8,7 +8,12 @@ public interface IDocumentLoader
 public abstract record DocumentLoadResult(string Path);
 
 public sealed record DocumentLoaded(string Path, string Text, string EncodingName, bool UsedFallbackEncoding,
-                                    long ByteLength, DateTime LastWriteTimeUtc) : DocumentLoadResult(Path);
+                                    long ByteLength, DateTime LastWriteTimeUtc) : DocumentLoadResult(Path)
+{
+    /// The file started with a byte order mark. Saving re-emits exactly that (<see cref="DocumentTextEncoder"/>):
+    /// UTF-16/32 are also detected without a BOM, so the encoding name alone doesn't say.
+    public bool HasBom { get; init; }
+}
 
 public sealed record DocumentLoadFailed(string Path, DocumentLoadError Error, string Detail) : DocumentLoadResult(Path);
 

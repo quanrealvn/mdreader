@@ -337,16 +337,23 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock x:Name="DocGlyph" Grid.Column="0" Style="{StaticResource IconTextStyle}" FontSize="12"
                                        Text="&#xE8A5;" Margin="0,0,8,0" />
                             <TextBlock Grid.Column="1" Text="{Binding Header}" TextTrimming="CharacterEllipsis"
                                        VerticalAlignment="Center" />
-                            <TextBlock x:Name="DeletedGlyph" Grid.Column="2" Style="{StaticResource IconTextStyle}" FontSize="12"
+                            <TextBlock x:Name="DirtyGlyph" Grid.Column="2" FontSize="16" Text="&#x25CF;"
+                                       Margin="6,0,0,0" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Brush.Accent}"
+                                       Visibility="Collapsed" ToolTip="Unsaved changes"
+                                       AutomationProperties.AutomationId="TabDirtyMarker"
+                                       AutomationProperties.Name="Unsaved changes" />
+                            <TextBlock x:Name="DeletedGlyph" Grid.Column="3" Style="{StaticResource IconTextStyle}" FontSize="12"
                                        Text="&#xE7BA;" Margin="6,0,0,0" Foreground="{DynamicResource Brush.Warning}"
                                        Visibility="Collapsed" ToolTip="The file was deleted or moved"
                                        AutomationProperties.Name="Deleted" />
-                            <Button x:Name="CloseButton" Grid.Column="3" Style="{StaticResource TabCloseButtonStyle}"
+                            <Button x:Name="CloseButton" Grid.Column="4" Style="{StaticResource TabCloseButtonStyle}"
                                     Command="{Binding CloseCommand}"
                                     ToolTip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[TabCloseButton]}"
                                     AutomationProperties.AutomationId="TabCloseButton" AutomationProperties.Name="Close tab"
@@ -371,6 +378,11 @@
                         </Trigger>
                         <DataTrigger Binding="{Binding IsDeleted}" Value="True">
                             <Setter TargetName="DeletedGlyph" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsDirty}" Value="True">
+                            <Setter TargetName="DirtyGlyph" Property="Visibility" Value="Visible" />
+                            <!-- Readable from UI Automation, where a decorative glyph isn't a reliable hook. -->
+                            <Setter Property="AutomationProperties.ItemStatus" Value="unsaved" />
                         </DataTrigger>
                         <DataTrigger Binding="{Binding State}" Value="Loading">
                             <Setter TargetName="DocGlyph" Property="Opacity" Value="0.45" />

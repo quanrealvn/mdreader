@@ -44,9 +44,13 @@ internal sealed class DocumentSession : IDisposable
     /// document in Debug) must not count as "the user came back" (R6).
     private static readonly TimeSpan PrintFallbackGrace = TimeSpan.FromMilliseconds(1500);
 
+    /// Typing re-renders the preview from the editor buffer, not from the file.
+    private static readonly TimeSpan EditRenderDelay = TimeSpan.FromMilliseconds(300);
+
     // All banner wording comes from DocumentErrorMessages (ARCHITECTURE §4.4).
     private static readonly BannerInfo DeletedBanner = DocumentErrorMessages.DeletedBanner();
     private static readonly BannerInfo LocalResourcesBanner = DocumentErrorMessages.ResourceRootTooLongBanner();
+    private static readonly BannerInfo DiskChangedBanner = DocumentErrorMessages.DiskChangedWhileEditingBanner();
 
     private readonly IDocumentLoader _loader;
     private readonly IMarkdownRenderer _renderer;
@@ -97,6 +101,14 @@ internal sealed class DocumentSession : IDisposable
     private long _logWindowStart;
     private int _logWindowCount;
     private int _logSuppressed;
+
+    // ----- Side-by-side editing -----
+    private FileState? _file;                // the document as it is on disk (last successful load, or last save)
+    private string? _editorText;             // the editor's buffer (CRLF) while split view is open; null = preview only
+    private bool _isDirty;
+    private bool _diskChangedWhileDirty;
+    private DispatcherTimer? _editTimer;
+    private bool _adoptFileIntoEditor;       // the next successful file load replaces the editor buffer
 
     private bool _disposed;
 
@@ -163,8 +175,20 @@ internal sealed class DocumentSession : IDisposable
     /// Latest payload version for which the page reported <c>rendered{phase:"enhanced"}</c>; 0 = none yet.
     public int RenderedVersion { get; private set; }
 
+    /// True while the editor pane is open (its buffer, not the file, is what the preview shows).
+    public bool IsEditing => _editorText is not null;
+
+    /// The editor has changes that aren't on disk.
+    public bool IsDirty => _isDirty;
+
     /// Raised on the UI thread whenever Title, State, ErrorKind, IsDeleted or RenderedVersion may have changed.
     public event EventHandler? StateChanged;
+
+    /// Raised on the UI thread when <see cref="IsDirty"/> changed.
+    public event EventHandler? DirtyChanged;
+
+    /// Raised on the UI thread when the buffer was replaced behind the editor's back (reload, save, checkbox tick).
+    public event EventHandler<string>? EditorTextReplaced;
 
     internal event EventHandler<DocumentLoadCompletedEventArgs>? LoadCompleted;
 
@@ -241,6 +265,7 @@ internal sealed class DocumentSession : IDisposable
     public Task ReloadAsync(bool preserveScroll, string? scrollToId = null)
     {
         _dispatcher.VerifyAccess();
+        _adoptFileIntoEditor = true;   // F5 is also "throw my edits away and show me the file"
         return ReloadCoreAsync(preserveScroll, scrollToId, force: true);
     }
 
@@ -434,6 +459,7 @@ internal sealed class DocumentSession : IDisposable
 
         _disposed = true;
         _pipelineCts.Cancel();
+        StopEditTimer();
         _theme.EffectiveThemeChanged -= OnEffectiveThemeChanged;
         _settings.Changed -= OnSettingsChanged;
 
@@ -472,7 +498,11 @@ internal sealed class DocumentSession : IDisposable
     // ----------------------------------------------------------------------------------------------------------------
     // Pipeline (§5 versioning rules 1–5)
 
-    private async Task ReloadCoreAsync(bool preserveScroll, string? scrollToId, bool force)
+    /// <param name="sourceText">
+    /// When given, the preview is rendered from this text instead of the file (the editor buffer, §4.10). The file isn't
+    /// read, so nothing about the on-disk state changes.
+    /// </param>
+    private async Task ReloadCoreAsync(bool preserveScroll, string? scrollToId, bool force, string? sourceText = null)
     {
         if (_disposed)
         {
@@ -500,7 +530,10 @@ internal sealed class DocumentSession : IDisposable
                 preserveScroll && hasContent,
                 scrollToId ?? (hasContent ? null : _pendingFragment),
                 force ? null : _lastLoaded,
-                LocalResourcesUnavailable ? LocalResourcesBanner : null);
+                LocalResourcesUnavailable ? LocalResourcesBanner : null,
+                sourceText,
+                _file?.EncodingName ?? EncodingNames.Utf8,
+                _file?.UsedFallbackEncoding ?? false);
 
             PipelineOutcome outcome = await Task.Run(() => RunPipelineAsync(request, cts.Token), cts.Token);
             await ReturnToUiThread();
@@ -533,30 +566,43 @@ internal sealed class DocumentSession : IDisposable
     {
         string resourceRoot = await ResourceRootTask.ConfigureAwait(false);
         long started = Stopwatch.GetTimestamp();
-        DocumentLoadResult result;
-        try
+        DocumentLoaded loaded;
+        FileState? file;
+        if (request.SourceText is { } buffer)
         {
-            result = await _loader.LoadAsync(Path, cancellationToken).ConfigureAwait(false);
+            // Rendering the editor buffer: the file isn't touched, so no FileState comes out of this pipeline run.
+            loaded = new DocumentLoaded(Path, buffer, request.EncodingName, request.UsedFallbackEncoding, buffer.Length, DateTime.MinValue);
+            file = null;
         }
-        catch (OperationCanceledException)
+        else
         {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _log.Write(AppLogLevel.Error, Category, $"The loader threw for {Path}.", ex);
-            result = new DocumentLoadFailed(Path, DocumentLoadError.IoError, ex.Message);
+            DocumentLoadResult result;
+            try
+            {
+                result = await _loader.LoadAsync(Path, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.Write(AppLogLevel.Error, Category, $"The loader threw for {Path}.", ex);
+                result = new DocumentLoadFailed(Path, DocumentLoadError.IoError, ex.Message);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (result is DocumentLoadFailed failed)
+            {
+                return new FailedOutcome(failed.Error, failed.Detail, SerializeError(ToErrorKind(failed.Error), failed.Detail));
+            }
+
+            loaded = (DocumentLoaded)result;
+            file = new FileState(loaded.Text, loaded.EncodingName, loaded.HasBom, loaded.UsedFallbackEncoding,
+                LineEndings.Detect(loaded.Text));
         }
 
         double loadMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (result is DocumentLoadFailed failed)
-        {
-            return new FailedOutcome(failed.Error, failed.Detail, SerializeError(ToErrorKind(failed.Error), failed.Detail));
-        }
-
-        var loaded = (DocumentLoaded)result;
         BannerInfo? encodingBanner = loaded.UsedFallbackEncoding
             ? DocumentErrorMessages.FallbackEncodingBanner(loaded.EncodingName)
             : null;
@@ -565,7 +611,7 @@ internal sealed class DocumentSession : IDisposable
             && string.Equals(previous.EncodingName, snapshot.EncodingName, StringComparison.Ordinal)
             && string.Equals(previous.Text, snapshot.Text, StringComparison.Ordinal))
         {
-            return new UnchangedOutcome(encodingBanner);   // rule 4
+            return new UnchangedOutcome(encodingBanner, file);   // rule 4
         }
 
         try
@@ -576,7 +622,8 @@ internal sealed class DocumentSession : IDisposable
                 DocId, request.Version, render, request.PreserveScroll, request.ScrollToId, banner);
             var perfInfo = new PerfDocumentInfo(Path, loaded.ByteLength, loadMs, render.Timings.ParseMs, render.Timings.HtmlMs,
                 render.Timings.SanitizeMs, render.Html.Length, parts.Count, 0);
-            return new RenderedOutcome(request.Version, snapshot, parts, render.Title, request.ScrollToId, encodingBanner, banner, perfInfo);
+            return new RenderedOutcome(request.Version, snapshot, parts, render.Title, request.ScrollToId, encodingBanner, banner,
+                perfInfo, file);
         }
         catch (OperationCanceledException)
         {
@@ -600,6 +647,7 @@ internal sealed class DocumentSession : IDisposable
         {
             case RenderedOutcome rendered:
                 _lastLoaded = rendered.Snapshot;
+                AdoptFileState(rendered.File);
                 _deleted = false;
                 _reloadBanner = null;
                 _encodingBanner = rendered.EncodingBanner;
@@ -624,6 +672,7 @@ internal sealed class DocumentSession : IDisposable
                 break;
 
             case UnchangedOutcome unchanged:
+                AdoptFileState(unchanged.File);
                 _deleted = false;
                 _reloadBanner = null;
                 _encodingBanner = unchanged.EncodingBanner;
@@ -768,6 +817,11 @@ internal sealed class DocumentSession : IDisposable
 
     private BannerInfo? EffectiveBanner()
     {
+        if (_diskChangedWhileDirty)
+        {
+            return DiskChangedBanner;
+        }
+
         if (_deleted)
         {
             return DeletedBanner;
@@ -867,6 +921,9 @@ internal sealed class DocumentSession : IDisposable
                 case TocVisibilityChangedMessage toc:
                     _postedTocVisible = toc.Visible;   // the page already shows it
                     _settings.Update(s => s.TocVisible == toc.Visible ? s : s with { TocVisible = toc.Visible });
+                    break;
+                case TaskToggleMessage taskToggle:
+                    HandleTaskToggle(taskToggle);
                     break;
                 case LogMessage log:
                     HandleWebLog(log);
@@ -1150,6 +1207,19 @@ internal sealed class DocumentSession : IDisposable
             return;
         }
 
+        if (_isDirty)
+        {
+            // Never clobber unsaved text: keep it and say so. F5 loads the file, Ctrl+S overwrites it (§4.10).
+            if (!_diskChangedWhileDirty)
+            {
+                _diskChangedWhileDirty = true;
+                _log.Write(AppLogLevel.Info, Category, $"{Path} changed on disk while the editor has unsaved changes.");
+                PostBannerIfChanged();
+            }
+
+            return;
+        }
+
         _ = ReloadCoreAsync(preserveScroll: true, scrollToId: null, force: false);
     }
 
@@ -1345,18 +1415,327 @@ internal sealed class DocumentSession : IDisposable
         }
     }
 
+    // ----------------------------------------------------------------------------------------------------------------
+    // Side-by-side editing and task-list checkboxes
+
+    /// Opens the editor pane: returns the text the text box must show (CRLF, see <see cref="LineEndings"/>). Until the
+    /// first load has finished the buffer is empty; <see cref="EditorTextReplaced"/> fills it in.
+    public string BeginEditing()
+    {
+        _dispatcher.VerifyAccess();
+        _editorText ??= LineEndings.ToCrlf(_file?.Text ?? "");
+        return _editorText;
+    }
+
+    /// Closes the editor pane. With unsaved changes this keeps the buffer: hiding the pane is not "throw my text away",
+    /// so reopening it shows the same text and closing the tab still asks about it.
+    public void EndEditing()
+    {
+        _dispatcher.VerifyAccess();
+        if (_isDirty)
+        {
+            return;
+        }
+
+        StopEditTimer();
+        _editorText = null;
+        _diskChangedWhileDirty = false;
+        SetDirty(false);
+        PostBannerIfChanged();
+    }
+
+    /// The user typed. Re-renders the preview from the buffer, debounced (§4.10).
+    public void SetEditorText(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        _dispatcher.VerifyAccess();
+        if (_disposed || _editorText is null || string.Equals(_editorText, text, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _editorText = text;
+        SetDirty(!string.Equals(text, LineEndings.ToCrlf(_file?.Text ?? ""), StringComparison.Ordinal));
+        RestartEditTimer();
+    }
+
+    /// Ctrl+S. Writes the buffer with the file's encoding, BOM and line ending; false if nothing was written.
+    public async Task<bool> SaveAsync()
+    {
+        _dispatcher.VerifyAccess();
+        if (_disposed || _editorText is not { } text)
+        {
+            return false;
+        }
+
+        FileState target = _file ?? new FileState("", EncodingNames.Utf8, false, false, LineEndings.Crlf);
+        string onDisk = LineEndings.Convert(text, target.LineEnding);
+        string path = Path;
+        Exception? failure = await Task.Run(() => TryWrite(path, onDisk, target));
+        await ReturnToUiThread();
+        if (_disposed)
+        {
+            return false;
+        }
+
+        if (failure is not null)
+        {
+            _log.Write(AppLogLevel.Warning, Category, $"Saving {path} failed.", failure);
+            _status.ShowStatus("Couldn't save the file.");
+            return false;
+        }
+
+        AfterSave(onDisk, target);
+        _status.ShowStatus($"Saved {IOPath.GetFileName(path)}");
+        return true;
+    }
+
+    /// Save on a path that can't await (closing a tab or the window). Same bytes, synchronously.
+    public bool SaveBlocking()
+    {
+        _dispatcher.VerifyAccess();
+        if (_disposed || _editorText is not { } text)
+        {
+            return false;
+        }
+
+        FileState target = _file ?? new FileState("", EncodingNames.Utf8, false, false, LineEndings.Crlf);
+        string onDisk = LineEndings.Convert(text, target.LineEnding);
+        Exception? failure = TryWrite(Path, onDisk, target);
+        if (failure is not null)
+        {
+            _log.Write(AppLogLevel.Warning, Category, $"Saving {Path} failed.", failure);
+            return false;
+        }
+
+        AfterSave(onDisk, target);
+        return true;
+    }
+
+    /// The file changed on disk since the editor went dirty, so a save overwrites someone else's version.
+    public bool WouldOverwriteDiskChanges => _isDirty && _diskChangedWhileDirty;
+
+    private static Exception? TryWrite(string path, string text, FileState target)
+    {
+        try
+        {
+            File.WriteAllBytes(path, DocumentTextEncoder.Encode(text, target.EncodingName, target.HasBom));
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            return ex;
+        }
+    }
+
+    private void AfterSave(string onDisk, FileState target)
+    {
+        _file = target with { Text = onDisk };
+        _lastLoaded = new LoadedSnapshot(onDisk, target.EncodingName);   // the watcher's reload finds nothing new
+        _diskChangedWhileDirty = false;
+        SetDirty(false);
+        PostBannerIfChanged();
+    }
+
+    private void AdoptFileState(FileState? file)
+    {
+        if (file is null)
+        {
+            return;   // rendered from the editor buffer: the file wasn't read
+        }
+
+        _file = file;
+        if (_editorText is null)
+        {
+            return;
+        }
+
+        if (_adoptFileIntoEditor || !_isDirty)
+        {
+            _adoptFileIntoEditor = false;
+            _diskChangedWhileDirty = false;
+            _editorText = LineEndings.ToCrlf(file.Text);
+            SetDirty(false);
+            RaiseEditorTextReplaced(_editorText);
+        }
+    }
+
+    private void SetDirty(bool dirty)
+    {
+        if (_isDirty == dirty)
+        {
+            return;
+        }
+
+        _isDirty = dirty;
+        try
+        {
+            DirtyChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            _log.Write(AppLogLevel.Error, Category, "A DirtyChanged handler failed.", ex);
+        }
+    }
+
+    private void RaiseEditorTextReplaced(string text)
+    {
+        try
+        {
+            EditorTextReplaced?.Invoke(this, text);
+        }
+        catch (Exception ex)
+        {
+            _log.Write(AppLogLevel.Error, Category, "An EditorTextReplaced handler failed.", ex);
+        }
+    }
+
+    private void RestartEditTimer()
+    {
+        _editTimer ??= CreateEditTimer();
+        _editTimer.Stop();
+        _editTimer.Start();
+    }
+
+    private DispatcherTimer CreateEditTimer()
+    {
+        var timer = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher) { Interval = EditRenderDelay };
+        timer.Tick += (_, _) =>
+        {
+            StopEditTimer();
+            if (!_disposed && _editorText is { } text)
+            {
+                _ = ReloadCoreAsync(preserveScroll: true, scrollToId: null, force: true, sourceText: text);
+            }
+        };
+        return timer;
+    }
+
+    private void StopEditTimer() => _editTimer?.Stop();
+
+    /// A checkbox was ticked in the page (§7.2 `taskToggle`).
+    private void HandleTaskToggle(TaskToggleMessage toggle)
+    {
+        if (_payload is not { IsError: false } payload || toggle.Version != payload.Version)
+        {
+            _log.Write(AppLogLevel.Debug, Category, $"Ignored taskToggle for v{toggle.Version} (showing v{_payload?.Version ?? 0}).");
+            return;
+        }
+
+        if (_editorText is { } buffer)
+        {
+            // The editor owns the document while it is open: edit the buffer, not the file.
+            if (!TaskListToggle.TryToggle(buffer, toggle.Line, toggle.Checked, out string updated))
+            {
+                RejectTaskToggle("That checkbox is out of date.");
+                return;
+            }
+
+            if (!string.Equals(updated, buffer, StringComparison.Ordinal))
+            {
+                _editorText = updated;
+                SetDirty(!string.Equals(updated, LineEndings.ToCrlf(_file?.Text ?? ""), StringComparison.Ordinal));
+                RaiseEditorTextReplaced(updated);
+                StopEditTimer();
+                _ = ReloadCoreAsync(preserveScroll: true, scrollToId: null, force: true, sourceText: updated);
+            }
+
+            return;
+        }
+
+        _ = ToggleOnDiskAsync(toggle);
+    }
+
+    private async Task ToggleOnDiskAsync(TaskToggleMessage toggle)
+    {
+        try
+        {
+            ToggleResult result = await Task.Run(() => ToggleFileAsync(toggle, CancellationToken.None));
+            await ReturnToUiThread();
+            if (_disposed)
+            {
+                return;
+            }
+
+            switch (result)
+            {
+                case ToggleResult.Written:
+                    // The watcher would reload too, but a click should feel immediate. The reload after it finds the
+                    // same text and stops at rule 4, so the write can't turn into a loop.
+                    _ = ReloadCoreAsync(preserveScroll: true, scrollToId: null, force: false);
+                    break;
+                case ToggleResult.Unchanged:
+                    break;
+                case ToggleResult.Stale:
+                    RejectTaskToggle("That checkbox is out of date.");
+                    break;
+                default:
+                    RejectTaskToggle("Couldn't update the file.");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Write(AppLogLevel.Error, Category, $"Toggling a task item in {Path} failed.", ex);
+        }
+    }
+
+    /// Thread pool: re-read the file (the render may be stale), flip the marker, write it back unchanged otherwise.
+    private async Task<ToggleResult> ToggleFileAsync(TaskToggleMessage toggle, CancellationToken cancellationToken)
+    {
+        DocumentLoadResult result = await _loader.LoadAsync(Path, cancellationToken).ConfigureAwait(false);
+        if (result is not DocumentLoaded loaded)
+        {
+            return ToggleResult.Failed;
+        }
+
+        if (!TaskListToggle.TryToggle(loaded.Text, toggle.Line, toggle.Checked, out string updated))
+        {
+            return ToggleResult.Stale;
+        }
+
+        if (string.Equals(updated, loaded.Text, StringComparison.Ordinal))
+        {
+            return ToggleResult.Unchanged;
+        }
+
+        var target = new FileState(updated, loaded.EncodingName, loaded.HasBom, loaded.UsedFallbackEncoding, "");
+        return TryWrite(Path, updated, target) is null ? ToggleResult.Written : ToggleResult.Failed;
+    }
+
+    /// The write didn't happen: say so and re-render, so the box snaps back to what the document says.
+    private void RejectTaskToggle(string message)
+    {
+        _status.ShowStatus(message);
+        if (_editorText is { } buffer)
+        {
+            _ = ReloadCoreAsync(preserveScroll: true, scrollToId: null, force: true, sourceText: buffer);
+        }
+        else
+        {
+            _ = ReloadCoreAsync(preserveScroll: true, scrollToId: null, force: true);
+        }
+    }
+
+    private enum ToggleResult { Written, Unchanged, Stale, Failed }
+
     private sealed record LoadedSnapshot(string Text, string EncodingName);
 
-    private sealed record PipelineRequest(int Version, bool PreserveScroll, string? ScrollToId, LoadedSnapshot? Previous, BannerInfo? ResourceBanner);
+    private sealed record PipelineRequest(int Version, bool PreserveScroll, string? ScrollToId, LoadedSnapshot? Previous,
+        BannerInfo? ResourceBanner, string? SourceText, string EncodingName, bool UsedFallbackEncoding);
+
+    /// What the document looks like on disk (last successful load, or last save).
+    private sealed record FileState(string Text, string EncodingName, bool HasBom, bool UsedFallbackEncoding, string LineEnding);
 
     private sealed record Payload(IReadOnlyList<string> Parts, int Version, bool IsError, DocumentErrorKind? ErrorKind, BannerInfo? Banner);
 
     private abstract record PipelineOutcome;
 
     private sealed record RenderedOutcome(int Version, LoadedSnapshot Snapshot, IReadOnlyList<string> Parts, string Title,
-        string? ScrollToId, BannerInfo? EncodingBanner, BannerInfo? PayloadBanner, PerfDocumentInfo PerfInfo) : PipelineOutcome;
+        string? ScrollToId, BannerInfo? EncodingBanner, BannerInfo? PayloadBanner, PerfDocumentInfo PerfInfo,
+        FileState? File) : PipelineOutcome;
 
-    private sealed record UnchangedOutcome(BannerInfo? EncodingBanner) : PipelineOutcome;
+    private sealed record UnchangedOutcome(BannerInfo? EncodingBanner, FileState? File) : PipelineOutcome;
 
     private sealed record FailedOutcome(DocumentLoadError Error, string Detail, string ErrorJson) : PipelineOutcome;
 

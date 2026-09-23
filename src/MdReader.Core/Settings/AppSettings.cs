@@ -37,6 +37,16 @@ public sealed record AppSettings
     [JsonConverter(typeof(ReadingStyleSettingConverter))]
     public ReadingStyle ReadingStyle { get; init; } = ReadingStyle.Colorful;   // unknown value in settings.json → Colorful
 
+    /// Side-by-side editing: the view mode a new tab starts in (false = preview only).
+    public bool SplitView { get; init; }
+
+    /// Fraction of the document area the editor pane takes in split view; clamped to MinSplitRatio..MaxSplitRatio.
+    public double SplitRatio { get; init; } = DefaultSplitRatio;
+
+    public const double DefaultSplitRatio = 0.5;
+    public const double MinSplitRatio = 0.15;
+    public const double MaxSplitRatio = 0.85;
+
     public WindowPlacement? Window { get; init; }
     public IReadOnlyList<string> RecentFiles { get; init; } = [];   // most recent first, max 10, case-insensitive unique
 

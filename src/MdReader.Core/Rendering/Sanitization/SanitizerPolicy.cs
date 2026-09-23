@@ -41,7 +41,12 @@ internal static class SanitizerPolicy
     public static readonly FrozenSet<string> OrderedListTypes = FrozenSet.ToFrozenSet(["1", "a", "A", "i", "I"], StringComparer.Ordinal);
 
     /// <summary>Attributes of <c>input</c> that the writer needs to see (the element itself is rebuilt).</summary>
-    private static readonly string[] InputAttributes = ["type", "checked"];
+    /// <remarks>
+    /// <c>data-line</c> survives HtmlSanitizer on every element, but only the writer's checkbox branch ever emits it,
+    /// and only when its value carries the render's task-line token (§4.1): <see cref="IsAllowedAttribute"/> keeps it
+    /// off everything else.
+    /// </remarks>
+    private static readonly string[] InputAttributes = ["type", "checked", "data-line"];
 
     /// <summary>The union HtmlSanitizer is configured with.</summary>
     public static readonly FrozenSet<string> SanitizerAttributes = GlobalAttributes

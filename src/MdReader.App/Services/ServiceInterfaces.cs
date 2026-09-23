@@ -16,7 +16,16 @@ public interface IDialogService                                 // every method 
     IReadOnlyList<string> ShowOpenDialog(string? initialDirectory);   // multi-select, MarkdownFileTypes.OpenFileDialogFilter
     string? ShowSavePdfDialog(string suggestedFullPath);
     void ShowError(string title, string message);
+
+    /// "Save changes to <name>?" before a dirty tab (or the window) closes. Test mode: Save, with no UI and no blocking.
+    SaveChangesChoice ConfirmSaveChanges(string fileName);
+
+    /// The file changed on disk while the editor was dirty and the user asked to save anyway. Test mode: true.
+    bool ConfirmOverwriteChangedFile(string fileName);
 }
+
+/// What the user answered to "Save changes to …?".
+public enum SaveChangesChoice { Save, DontSave, Cancel }
 
 public interface IClipboardService { bool TrySetText(string text); }  // retries CLIPBRD_E_CANT_OPEN 5×20 ms
 

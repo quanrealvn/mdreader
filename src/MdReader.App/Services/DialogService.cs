@@ -68,6 +68,41 @@ public sealed class DialogService : IDialogService
         return dialog.ShowDialog(GetOwner()) == true ? dialog.FileName : null;
     }
 
+    public SaveChangesChoice ConfirmSaveChanges(string fileName)
+    {
+        if (_options.IsTestMode)
+        {
+            return SaveChangesChoice.Save;   // §4.7: no modal UI in tests, and nothing the user typed is thrown away
+        }
+
+        var answer = Ask($"Save changes to {fileName}?", MessageBoxButton.YesNoCancel, MessageBoxResult.Yes);
+        return answer switch
+        {
+            MessageBoxResult.Yes => SaveChangesChoice.Save,
+            MessageBoxResult.No => SaveChangesChoice.DontSave,
+            _ => SaveChangesChoice.Cancel,
+        };
+    }
+
+    public bool ConfirmOverwriteChangedFile(string fileName)
+    {
+        if (_options.IsTestMode)
+        {
+            return true;
+        }
+
+        return Ask($"{fileName} changed on disk since you started editing. Overwrite it with your version?",
+            MessageBoxButton.YesNo, MessageBoxResult.No) == MessageBoxResult.Yes;
+    }
+
+    private static MessageBoxResult Ask(string message, MessageBoxButton buttons, MessageBoxResult defaultResult)
+    {
+        var owner = GetOwner();
+        return owner is not null
+            ? MessageBox.Show(owner, message, "MdReader", buttons, MessageBoxImage.Warning, defaultResult)
+            : MessageBox.Show(message, "MdReader", buttons, MessageBoxImage.Warning, defaultResult);
+    }
+
     public void ShowError(string title, string message)
     {
         _log.Write(AppLogLevel.Warning, Category, $"{title}: {message}");

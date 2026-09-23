@@ -7,7 +7,7 @@ public static class AppSettingsNormalizer
     /// Clamp Zoom (ZoomLevels.Clamp; NaN → Default), dedupe/trim RecentFiles (rooted paths only, max 10),
     /// drop Window if Width/Height < 200 or any value is NaN/∞, undefined ReadingStyle → Colorful,
     /// Session: fully-qualified paths only, trimmed, case-insensitive unique, max SessionState.MaxFiles, ActiveFile one of
-    /// them (else null); unknown SchemaVersion → defaults.
+    /// them (else null); clamp SplitRatio (NaN/∞ → Default); unknown SchemaVersion → defaults.
     public static AppSettings Normalize(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -23,9 +23,13 @@ public static class AppSettingsNormalizer
             Window = NormalizeWindow(settings.Window),
             RecentFiles = NormalizeRecentFiles(settings.RecentFiles),
             ReadingStyle = Enum.IsDefined(settings.ReadingStyle) ? settings.ReadingStyle : ReadingStyle.Colorful,
+            SplitRatio = NormalizeSplitRatio(settings.SplitRatio),
             Session = NormalizeSession(settings.Session),
         };
     }
+
+    private static double NormalizeSplitRatio(double ratio) =>
+        IsFinite(ratio) ? Math.Clamp(ratio, AppSettings.MinSplitRatio, AppSettings.MaxSplitRatio) : AppSettings.DefaultSplitRatio;
 
     private static SessionState? NormalizeSession(SessionState? session)
     {

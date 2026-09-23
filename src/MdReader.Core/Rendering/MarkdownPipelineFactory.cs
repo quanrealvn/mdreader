@@ -43,6 +43,7 @@ internal static class MarkdownPipelineFactory
 
         return builder
             .UseTaskLists()
+            .Use<TaskListLineExtension>()       // data-line on the checkboxes the pipeline itself produces (§4.1)
             .UseEmphasisExtras(EmphasisExtraOptions.Strikethrough)
             .UseEmojiAndSmiley(enableSmileys: false)
             .UseMathematics()

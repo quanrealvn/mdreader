@@ -71,6 +71,8 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
         PrintCommand = new RelayCommand(() => RunOnActiveTab(t => t.PrintAsync(), "Print"), () => HasTabs);
         ExportPdfCommand = new RelayCommand(() => RunOnActiveTab(t => t.ExportPdfAsync(), "Export as PDF"), () => HasTabs);
         ReloadCommand = new RelayCommand(() => RunOnActiveTab(t => t.ReloadAsync(), "Reload"), () => HasTabs);
+        SaveCommand = new RelayCommand(() => RunOnActiveTab(t => t.SaveAsync(), "Save"), () => HasTabs);
+        ToggleSplitViewCommand = new RelayCommand(ToggleSplitView, () => HasTabs);
         ToggleTocCommand = new RelayCommand(ToggleToc, () => HasTabs);
         _tocButtonResync = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher) { Interval = TocButtonResyncDelay };
         _tocButtonResync.Tick += (_, _) =>
@@ -86,7 +88,7 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
         [
             (RelayCommand)CloseActiveTabCommand, (RelayCommand)NextTabCommand, (RelayCommand)PreviousTabCommand,
             (RelayCommand)FindCommand, (RelayCommand)PrintCommand, (RelayCommand)ExportPdfCommand, (RelayCommand)ReloadCommand,
-            (RelayCommand)ToggleTocCommand,
+            (RelayCommand)ToggleTocCommand, (RelayCommand)SaveCommand, (RelayCommand)ToggleSplitViewCommand,
         ];
 
         _settingsSnapshot = settings.Current;
@@ -153,6 +155,17 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
             return;
         }
 
+        if (!ConfirmClose(tab))
+        {
+            return;   // the user cancelled: the tab stays open with its unsaved changes
+        }
+
+        index = _tabs.IndexOf(tab);   // a modal dialog ran in between
+        if (index < 0)
+        {
+            return;
+        }
+
         var wasActive = ReferenceEquals(tab, _activeTab);
         if (wasActive)
         {
@@ -191,6 +204,40 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
                 _tabs.Move(from, to);
             }
         }
+    }
+
+    /// "Save changes to &lt;name&gt;?" for a tab with unsaved edits (§4.10). False = the user cancelled.
+    private bool ConfirmClose(IDocumentTab tab)
+    {
+        if (!tab.IsDirty)
+        {
+            return true;
+        }
+
+        switch (_dialogs.ConfirmSaveChanges(tab.Header))
+        {
+            case SaveChangesChoice.Save:
+                return tab.SaveBlocking() || !tab.IsDirty;   // a failed write keeps the tab (and the text) open
+            case SaveChangesChoice.DontSave:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// The window is closing: ask about every tab with unsaved edits. False = cancel the close. UI thread.
+    public bool ConfirmCloseAllTabs()
+    {
+        _dispatcher.VerifyAccess();
+        foreach (var tab in _tabs.ToArray())
+        {
+            if (!ConfirmClose(tab))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// Shutdown (§4.11): closes every tab — each Dispose tears down find → session → WebView — while the window and the
@@ -280,6 +327,32 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
         }
     }
 
+    /// Two-way bound to SplitViewButton.IsChecked: the active tab's view mode, also remembered in settings so the next
+    /// tab opens the same way (§4.10).
+    public bool IsSplitView
+    {
+        get => _activeTab?.IsSplitView ?? _settingsSnapshot.SplitView;
+        set
+        {
+            if (_activeTab is { } tab && tab.IsSplitView != value)
+            {
+                tab.IsSplitView = value;
+            }
+
+            _settings.Update(s => s.SplitView == value ? s : s with { SplitView = value });
+            OnPropertyChanged();
+        }
+    }
+
+    /// Ctrl+E and the split-view button.
+    private void ToggleSplitView()
+    {
+        if (_activeTab is { } tab)
+        {
+            IsSplitView = !tab.IsSplitView;
+        }
+    }
+
     /// Ctrl+B and the TOC button: the active page decides (drawer vs docked sidebar). Without a tab there is no page,
     /// so the preference itself is flipped.
     private void ToggleToc()
@@ -362,6 +435,10 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
     public ICommand ExportPdfCommand { get; }
 
     public ICommand ReloadCommand { get; }
+
+    public ICommand SaveCommand { get; }
+
+    public ICommand ToggleSplitViewCommand { get; }
 
     public ICommand ToggleTocCommand { get; }
 
@@ -513,6 +590,18 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
                 _dispatcher.BeginInvoke(() => OnPropertyChanged(nameof(WindowTitle)));
             }
         }
+
+        if (e.PropertyName is null or nameof(IDocumentTab.IsSplitView))
+        {
+            if (_dispatcher.CheckAccess())
+            {
+                OnPropertyChanged(nameof(IsSplitView));
+            }
+            else
+            {
+                _dispatcher.BeginInvoke(() => OnPropertyChanged(nameof(IsSplitView)));
+            }
+        }
     }
 
     private void OnSettingsChanged(object? sender, AppSettings settings)
@@ -579,6 +668,7 @@ public sealed class MainViewModel : ObservableObject, ITabHost, IStatusNotifier,
         OnPropertyChanged(nameof(ActiveTab));
         OnPropertyChanged(nameof(SelectedTab));
         OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(IsSplitView));
     }
 
     private void DisposeTab(IDocumentTab tab)
