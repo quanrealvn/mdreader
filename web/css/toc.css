@@ -1,0 +1,212 @@
+/* toc.css — table-of-contents content styling: header/toolbar, the filter box and sort
+   button, the row/tree presentation (indent + guide line, hover/focus/active, twisty),
+   and filter-state visibility. `layout.css` owns the panel's own box (size, position,
+   docked/drawer mechanics, scrollbar); this file owns everything drawn inside it. */
+
+.mdr-toc-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--mdr-space-4) var(--mdr-space-4) var(--mdr-space-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mdr-fg-muted);
+}
+
+/* ---------- Toolbar: filter box + sort toggle ---------- */
+
+.mdr-toc-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--mdr-space-2);
+  padding: 0 var(--mdr-space-4) var(--mdr-space-3);
+}
+
+.mdr-toc-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mdr-toc-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-sm);
+  background: var(--mdr-bg-subtle);
+  color: var(--mdr-fg);
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+
+.mdr-toc-search-input::placeholder {
+  color: var(--mdr-fg-muted);
+}
+
+.mdr-toc-search-input:hover {
+  border-color: var(--mdr-fg-muted);
+}
+
+.mdr-toc-search-input:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 1px;
+  border-color: var(--mdr-accent);
+}
+
+/* Chromium's default magnifier/cancel decorations don't match the app chrome. */
+.mdr-toc-search-input::-webkit-search-decoration {
+  display: none;
+}
+
+.mdr-toc-sort::before {
+  content: "\21C5"; /* ⇅ */
+  font-size: 13px;
+  line-height: 1;
+}
+
+.mdr-toc-sort[aria-pressed="true"] {
+  color: var(--mdr-accent);
+  background: color-mix(in srgb, var(--mdr-accent) 14%, transparent);
+}
+
+.mdr-toc-status {
+  flex: none;
+  padding: 0 var(--mdr-space-4) var(--mdr-space-2);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--mdr-fg-muted);
+}
+
+.mdr-toc-status[hidden] {
+  display: none;
+}
+
+/* ---------- Tree: rows, indentation, guide lines ---------- */
+
+.mdr-toc-list,
+.mdr-toc-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mdr-toc-list {
+  padding-bottom: var(--mdr-space-3);
+}
+
+.mdr-toc-children {
+  padding-left: 16px;
+  margin-left: 11px;
+  border-left: 1px solid var(--mdr-border);
+}
+
+.mdr-toc-item {
+  position: relative;
+}
+
+.mdr-toc-item[hidden] {
+  display: none;
+}
+
+/* Collapsed sections hide their own children only — never affects the document. */
+.mdr-toc-item[data-collapsed="true"] > .mdr-toc-children {
+  display: none;
+}
+
+/* While filtering, ignore collapse state so a match buried in a collapsed section is
+   still reachable; the specificity (4 selectors) intentionally beats the rule above (3). */
+.mdr-toc--filtering .mdr-toc-item[data-collapsed="true"] > .mdr-toc-children {
+  display: block;
+}
+
+.mdr-toc-twisty {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  padding: 0;
+  border: none;
+  border-radius: var(--mdr-radius-sm);
+  background: transparent;
+  color: var(--mdr-fg-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--mdr-duration-fast) var(--mdr-easing),
+              color var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.mdr-toc-twisty::before {
+  content: "\25B8"; /* ▸ */
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  transition: transform var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.mdr-toc-twisty[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+.mdr-toc-twisty:hover {
+  background: var(--mdr-bg-subtle);
+  color: var(--mdr-fg);
+}
+
+.mdr-toc-link {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 7px var(--mdr-space-4) 7px 26px;
+  color: var(--mdr-fg-muted);
+  text-decoration: none;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  transition: background-color var(--mdr-duration-fast) var(--mdr-easing),
+              color var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.mdr-toc-link-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.mdr-toc-item[data-level="1"] > .mdr-toc-link {
+  font-weight: 600;
+  color: var(--mdr-fg);
+}
+
+.mdr-toc-link:hover {
+  color: var(--mdr-fg);
+  background: var(--mdr-bg-subtle);
+}
+
+.mdr-toc-link[aria-current] {
+  color: var(--mdr-accent);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--mdr-accent) 10%, transparent);
+}
+
+.mdr-toc-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+}
+
+.mdr-toc-item:has(> .mdr-toc-link[aria-current])::before {
+  background: var(--mdr-accent);
+}

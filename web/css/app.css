@@ -4,6 +4,7 @@
 
 @import "tokens.css";
 @import "layout.css";
+@import "toc.css";
 @import "markdown.css";
 @import "code.css";
 @import "alerts.css";

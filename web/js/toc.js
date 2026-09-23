@@ -1,11 +1,13 @@
-// toc.js — sidebar table of contents: builds the list from `toc` entries, tracks the
-// active heading with an IntersectionObserver, and reports visibility changes.
+// toc.js — sidebar table of contents: builds a collapsible, filterable, sortable tree
+// from `toc` entries, tracks the active heading with an IntersectionObserver, and
+// reports visibility changes.
 //
 // Click-to-scroll is NOT wired here: entries are plain `a[href="#..."]` elements, and
 // links.js's single document-level click/auxclick listener (§7.3) already intercepts
 // every in-page fragment link, including these — so there is exactly one place that
 // resolves fragments and scrolls, and it behaves identically for TOC links and for
-// anchors inside the rendered content.
+// anchors inside the rendered content. The collapse twisty and sort button are plain
+// `<button>`s (not links), so they never reach that listener.
 
 import { send } from "./bridge.js";
 
@@ -33,9 +35,19 @@ const narrowQuery = window.matchMedia("(max-width: 899px)");
 let hostVisible = true;
 let drawerOpen = false;
 let autoHidden = true; // no entries yet
-let currentEntries = [];
-let activeLink = null;
+let currentEntries = []; // flat, always in DOCUMENT order — the IntersectionObserver
+                          // active-heading logic depends on that order regardless of
+                          // the sidebar's own sort mode.
+let treeRoots = [];
+let nodesById = new Map();
+let activeId = null;
 let observer = null;
+
+// Sort mode is a sidebar display preference, not per-document state: it intentionally
+// survives across `renderToc` calls (switching documents) but is never persisted to the
+// host. Collapse state IS per-document: it lives on the tree nodes rebuilt by every
+// `renderToc` call, so it always starts fully expanded on a new document (per spec).
+let sortMode = "doc"; // "doc" | "alpha"
 
 function isNarrow() {
   return narrowQuery.matches;
@@ -97,12 +109,24 @@ function cssEscapeId(value) {
   return String(value).replace(/["\\]/g, "\\$&");
 }
 
-function setActive(id) {
-  if (activeLink && activeLink.dataset.tocId === id) return;
-  if (activeLink) activeLink.removeAttribute("aria-current");
-  const next = tocList ? tocList.querySelector('.mdr-toc-link[data-toc-id="' + cssEscapeId(id) + '"]') : null;
-  activeLink = next || null;
+// ---------------------------------------------------------------------------------
+// Active heading (IntersectionObserver) — unaffected by sort/filter/collapse: it always
+// walks `currentEntries` in true document order and just flags the current link.
+// ---------------------------------------------------------------------------------
+
+function applyActiveAttribute() {
+  if (!tocList) return;
+  const current = tocList.querySelectorAll(".mdr-toc-link[aria-current]");
+  for (const link of current) link.removeAttribute("aria-current");
+  if (!activeId) return;
+  const next = tocList.querySelector('.mdr-toc-link[data-toc-id="' + cssEscapeId(activeId) + '"]');
   if (next) next.setAttribute("aria-current", "location");
+}
+
+function setActive(id) {
+  if (activeId === id) return;
+  activeId = id;
+  applyActiveAttribute();
 }
 
 function setupObserver() {
@@ -136,6 +160,264 @@ function setupObserver() {
   setActive(currentEntries[0].id);
 }
 
+// ---------------------------------------------------------------------------------
+// Tree: headings only carry a `level` (1-6); nesting is inferred the usual way — an
+// entry's parent is the nearest earlier entry with a smaller level (so a skipped level,
+// e.g. h1 -> h3, still nests one step, not three).
+// ---------------------------------------------------------------------------------
+
+function buildTree(entries) {
+  const roots = [];
+  const stack = []; // {node, level}
+  const byId = new Map();
+  for (const entry of entries) {
+    const node = { entry, children: [], collapsed: false, li: null, twistyBtn: null };
+    while (stack.length && stack[stack.length - 1].level >= entry.level) stack.pop();
+    if (stack.length === 0) roots.push(node);
+    else stack[stack.length - 1].node.children.push(node);
+    stack.push({ node, level: entry.level });
+    byId.set(entry.id, node);
+  }
+  return { roots, byId };
+}
+
+function compareText(a, b) {
+  return a.localeCompare(b, undefined, { sensitivity: "base" });
+}
+
+function toggleCollapse(node) {
+  node.collapsed = !node.collapsed;
+  if (node.li) node.li.setAttribute("data-collapsed", node.collapsed ? "true" : "false");
+  if (node.twistyBtn) {
+    node.twistyBtn.setAttribute("aria-expanded", node.collapsed ? "false" : "true");
+    node.twistyBtn.setAttribute("aria-label", (node.collapsed ? "Expand " : "Collapse ") + node.entry.text);
+  }
+}
+
+/** Builds `<li>`s for `nodes` into `container` (either the root `<ol>` or a freshly
+ *  created `.mdr-toc-children` `<ol>`), honoring the current sort mode. Non-destructive:
+ *  it never reorders `node.children` itself, only the DOM, so switching sort mode back
+ *  to document order needs no re-parse. */
+function renderNodesInto(container, nodes) {
+  const ordered = sortMode === "alpha" ? [...nodes].sort((a, b) => compareText(a.entry.text, b.entry.text)) : nodes;
+
+  for (const node of ordered) {
+    const li = document.createElement("li");
+    li.className = "mdr-toc-item";
+    li.dataset.level = String(node.entry.level);
+    node.li = li;
+
+    const hasChildren = node.children.length > 0;
+    if (hasChildren) {
+      li.setAttribute("data-collapsed", node.collapsed ? "true" : "false");
+
+      const twisty = document.createElement("button");
+      twisty.type = "button";
+      twisty.className = "mdr-toc-twisty";
+      twisty.dataset.tocId = node.entry.id;
+      twisty.setAttribute("aria-expanded", node.collapsed ? "false" : "true");
+      twisty.setAttribute("aria-label", (node.collapsed ? "Expand " : "Collapse ") + node.entry.text);
+      node.twistyBtn = twisty;
+      li.appendChild(twisty);
+    } else {
+      node.twistyBtn = null;
+    }
+
+    const a = document.createElement("a");
+    a.className = "mdr-toc-link";
+    a.href = "#" + encodeURIComponent(node.entry.id);
+    a.dataset.tocId = node.entry.id;
+    a.title = node.entry.text;
+    const text = document.createElement("span");
+    text.className = "mdr-toc-link-text";
+    text.textContent = node.entry.text;
+    a.appendChild(text);
+    li.appendChild(a);
+
+    if (hasChildren) {
+      const childOl = document.createElement("ol");
+      childOl.className = "mdr-toc-children";
+      renderNodesInto(childOl, node.children);
+      li.appendChild(childOl);
+    }
+
+    container.appendChild(li);
+  }
+}
+
+function rebuildListDom() {
+  if (!tocList) return;
+  tocList.textContent = "";
+  renderNodesInto(tocList, treeRoots);
+}
+
+// ---------------------------------------------------------------------------------
+// Filter — case- and accent-insensitive substring match, anywhere in the heading text.
+// A node is visible if it matches itself or any descendant matches (so ancestors of a
+// match stay visible even when they themselves don't match); collapse state is ignored
+// while a filter is active so matches buried in a collapsed section aren't hidden twice.
+// ---------------------------------------------------------------------------------
+
+function normalizeForSearch(value) {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function applyFilter() {
+  const raw = tocFilterInput ? tocFilterInput.value : "";
+  const query = normalizeForSearch(raw.trim());
+  const filtering = query.length > 0;
+  if (tocNav) tocNav.classList.toggle("mdr-toc--filtering", filtering);
+
+  let matchCount = 0;
+
+  function walk(node) {
+    const selfMatch = !filtering || normalizeForSearch(node.entry.text).includes(query);
+    let descendantMatch = false;
+    for (const child of node.children) {
+      if (walk(child)) descendantMatch = true;
+    }
+    const visible = !filtering || selfMatch || descendantMatch;
+    if (node.li) node.li.hidden = !visible;
+    if (filtering && selfMatch) matchCount++;
+    return visible;
+  }
+
+  for (const root of treeRoots) walk(root);
+
+  if (tocStatus) {
+    if (!filtering) {
+      tocStatus.hidden = true;
+      tocStatus.textContent = "";
+    } else {
+      tocStatus.hidden = false;
+      tocStatus.textContent =
+        matchCount === 0
+          ? "No matching headings"
+          : matchCount + " of " + currentEntries.length + (matchCount === 1 ? " heading" : " headings");
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------
+// Toolbar: filter box + sort toggle. Built once; `renderToc` only rebuilds the list.
+// ---------------------------------------------------------------------------------
+
+let tocFilterInput = null;
+let tocSortButton = null;
+let tocStatus = null;
+
+function updateSortButton() {
+  if (!tocSortButton) return;
+  const alpha = sortMode === "alpha";
+  tocSortButton.setAttribute("aria-pressed", alpha ? "true" : "false");
+  tocSortButton.title = alpha ? "Sorted A\u2192Z" : "Document order";
+  tocSortButton.setAttribute(
+    "aria-label",
+    alpha ? "Sort order: alphabetical. Activate for document order." : "Sort order: document. Activate for alphabetical."
+  );
+}
+
+function nodeFromFocusTarget(el) {
+  if (!el || !el.classList || !el.dataset || !el.dataset.tocId) return null;
+  if (!el.classList.contains("mdr-toc-twisty") && !el.classList.contains("mdr-toc-link")) return null;
+  return nodesById.get(el.dataset.tocId) || null;
+}
+
+function buildToolbar() {
+  if (!tocNav || !tocList) return;
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "mdr-toc-toolbar";
+
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "mdr-toc-search";
+
+  const input = document.createElement("input");
+  input.type = "search";
+  input.className = "mdr-toc-search-input";
+  input.placeholder = "Filter headings";
+  input.setAttribute("aria-label", "Filter headings");
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  searchWrap.appendChild(input);
+  tocFilterInput = input;
+
+  const sortButton = document.createElement("button");
+  sortButton.type = "button";
+  sortButton.className = "mdr-icon-button mdr-toc-sort";
+  tocSortButton = sortButton;
+  updateSortButton();
+
+  toolbar.appendChild(searchWrap);
+  toolbar.appendChild(sortButton);
+
+  const status = document.createElement("div");
+  status.className = "mdr-toc-status";
+  status.setAttribute("aria-live", "polite");
+  status.hidden = true;
+  tocStatus = status;
+
+  tocNav.insertBefore(toolbar, tocList);
+  tocNav.insertBefore(status, tocList);
+
+  input.addEventListener("input", applyFilter);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && input.value !== "") {
+      e.preventDefault();
+      e.stopPropagation();
+      input.value = "";
+      applyFilter();
+    }
+  });
+
+  sortButton.addEventListener("click", () => {
+    sortMode = sortMode === "alpha" ? "doc" : "alpha";
+    updateSortButton();
+    rebuildListDom();
+    applyFilter();
+    applyActiveAttribute();
+  });
+
+  // Delegated so it keeps working across `rebuildListDom()` calls without re-binding.
+  tocList.addEventListener("click", (e) => {
+    const twisty = e.target.closest(".mdr-toc-twisty");
+    if (!twisty) return;
+    e.preventDefault();
+    const node = nodesById.get(twisty.dataset.tocId);
+    if (node) toggleCollapse(node);
+  });
+
+  tocList.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const focusable = Array.from(tocList.querySelectorAll(".mdr-toc-link")).filter((a) => a.offsetParent !== null);
+      if (focusable.length === 0) return;
+      let index = focusable.indexOf(document.activeElement);
+      if (index < 0 && document.activeElement && document.activeElement.classList.contains("mdr-toc-twisty")) {
+        const li = document.activeElement.closest(".mdr-toc-item");
+        const sibling = li ? li.querySelector(":scope > .mdr-toc-link") : null;
+        index = sibling ? focusable.indexOf(sibling) : -1;
+      }
+      const next = e.key === "ArrowDown" ? Math.min(index < 0 ? 0 : index + 1, focusable.length - 1) : Math.max(index < 0 ? 0 : index - 1, 0);
+      e.preventDefault();
+      focusable[next].focus();
+      return;
+    }
+
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const node = nodeFromFocusTarget(document.activeElement);
+      if (!node || node.children.length === 0) return;
+      const wantCollapsed = e.key === "ArrowLeft";
+      if (node.collapsed !== wantCollapsed) {
+        e.preventDefault();
+        toggleCollapse(node);
+      }
+    }
+  });
+}
+
 /** (Re)builds the sidebar from `toc` entries `{level, id, text}` and auto-hides below 2 entries. */
 export function renderToc(entries) {
   currentEntries = Array.isArray(entries) ? entries : [];
@@ -145,33 +427,23 @@ export function renderToc(entries) {
     observer.disconnect();
     observer = null;
   }
-  activeLink = null;
+  activeId = null;
 
-  const fragment = document.createDocumentFragment();
-  for (const entry of currentEntries) {
-    const li = document.createElement("li");
-    li.className = "mdr-toc-item";
-    li.dataset.level = String(entry.level);
+  const built = buildTree(currentEntries);
+  treeRoots = built.roots;
+  nodesById = built.byId;
 
-    const a = document.createElement("a");
-    a.className = "mdr-toc-link";
-    a.href = "#" + encodeURIComponent(entry.id);
-    a.textContent = entry.text;
-    a.title = entry.text;
-    a.dataset.tocId = entry.id;
+  if (tocFilterInput) tocFilterInput.value = "";
 
-    li.appendChild(a);
-    fragment.appendChild(li);
-  }
-
-  if (tocList) {
-    tocList.textContent = "";
-    tocList.appendChild(fragment);
-  }
+  rebuildListDom();
+  applyFilter();
+  applyActiveAttribute();
 
   updateVisibilityClass();
   setupObserver();
 }
+
+buildToolbar();
 
 if (tocClose) {
   tocClose.addEventListener("click", requestClose);

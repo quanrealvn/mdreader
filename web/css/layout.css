@@ -84,25 +84,20 @@ button {
   flex-direction: column;
   border-right: 1px solid var(--mdr-border);
   background: var(--mdr-bg);
-  overflow-y: auto;
-  overflow-x: hidden;
 }
 
 .mdr-toc--closed {
   display: none;
 }
 
-.mdr-toc-header {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--mdr-space-4) var(--mdr-space-4) var(--mdr-space-3);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--mdr-fg-muted);
+/* Only the list scrolls — the header, filter box and sort button stay put above it.
+   `min-height: 0` is required so this flex item can shrink below its content size and
+   actually become the scroll container instead of pushing `.mdr-toc`'s bounds open. */
+.mdr-toc-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .mdr-icon-button {
@@ -130,64 +125,6 @@ button {
 .mdr-icon-button:hover {
   background: var(--mdr-bg-subtle);
   color: var(--mdr-fg);
-}
-
-.mdr-toc-list {
-  flex: 1 1 auto;
-  list-style: none;
-  margin: 0;
-  padding: 0 0 var(--mdr-space-4);
-}
-
-.mdr-toc-item {
-  position: relative;
-}
-
-.mdr-toc-item[data-level="1"] .mdr-toc-link { padding-left: var(--mdr-space-4); font-weight: 600; }
-.mdr-toc-item[data-level="2"] .mdr-toc-link { padding-left: var(--mdr-space-4); }
-.mdr-toc-item[data-level="3"] .mdr-toc-link { padding-left: calc(var(--mdr-space-4) + 16px); }
-.mdr-toc-item[data-level="4"] .mdr-toc-link { padding-left: calc(var(--mdr-space-4) + 32px); }
-.mdr-toc-item[data-level="5"] .mdr-toc-link { padding-left: calc(var(--mdr-space-4) + 48px); }
-.mdr-toc-item[data-level="6"] .mdr-toc-link { padding-left: calc(var(--mdr-space-4) + 64px); }
-
-.mdr-toc-link {
-  display: block;
-  padding-top: 6px;
-  padding-bottom: 6px;
-  padding-right: var(--mdr-space-4);
-  color: var(--mdr-fg-muted);
-  text-decoration: none;
-  font-size: 0.8125rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: background-color var(--mdr-duration-fast) var(--mdr-easing),
-              color var(--mdr-duration-fast) var(--mdr-easing);
-}
-
-.mdr-toc-link:hover {
-  color: var(--mdr-fg);
-  background: var(--mdr-bg-subtle);
-}
-
-.mdr-toc-link[aria-current] {
-  color: var(--mdr-accent);
-  font-weight: 600;
-  background: color-mix(in srgb, var(--mdr-accent) 8%, transparent);
-}
-
-.mdr-toc-item::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: transparent;
-}
-
-.mdr-toc-item:has(.mdr-toc-link[aria-current])::before {
-  background: var(--mdr-accent);
 }
 
 .mdr-toc-backdrop {
@@ -287,23 +224,23 @@ button {
 
 /* ---------- Scrollbars (thin, overlay-style) ---------- */
 
-.mdr-toc,
+.mdr-toc-list,
 .mdr-main {
   scrollbar-width: thin;
   scrollbar-color: var(--mdr-border) transparent;
 }
 
-.mdr-toc::-webkit-scrollbar,
+.mdr-toc-list::-webkit-scrollbar,
 .mdr-main::-webkit-scrollbar {
   width: 10px;
 }
 
-.mdr-toc::-webkit-scrollbar-track,
+.mdr-toc-list::-webkit-scrollbar-track,
 .mdr-main::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.mdr-toc::-webkit-scrollbar-thumb,
+.mdr-toc-list::-webkit-scrollbar-thumb,
 .mdr-main::-webkit-scrollbar-thumb {
   background-color: var(--mdr-border);
   border-radius: var(--mdr-radius-full);
@@ -311,7 +248,7 @@ button {
   background-clip: content-box;
 }
 
-.mdr-toc::-webkit-scrollbar-thumb:hover,
+.mdr-toc-list::-webkit-scrollbar-thumb:hover,
 .mdr-main::-webkit-scrollbar-thumb:hover {
   background-color: var(--mdr-fg-muted);
 }
@@ -337,6 +274,8 @@ button {
   .mdr-toc-backdrop,
   .mdr-icon-button,
   .mdr-toc-link,
+  .mdr-toc-twisty,
+  .mdr-toc-twisty::before,
   #mdr-error-retry {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
@@ -395,6 +334,8 @@ button {
 html.mdr-large .mdr-toc,
 html.mdr-large .mdr-toc-backdrop,
 html.mdr-large .mdr-icon-button,
-html.mdr-large .mdr-toc-link {
+html.mdr-large .mdr-toc-link,
+html.mdr-large .mdr-toc-twisty,
+html.mdr-large .mdr-toc-twisty::before {
   transition: none;
 }
