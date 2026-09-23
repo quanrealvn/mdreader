@@ -259,7 +259,7 @@ public static partial class DocumentErrorMessages
         return variants.OrderByDescending(v => v.Length);
     }
 
-    private static string ShortName(string path) => Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
+    private static string ShortName(string path) => PathPolicy.Current.GetFileName(path);
 
     private static string ShortNameOrEllipsis(string path)
     {
