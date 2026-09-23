@@ -3,7 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using MdReader.App.ViewModels;
+using MdReader.Shell.ViewModels;
 
 namespace MdReader.App.Views;
 

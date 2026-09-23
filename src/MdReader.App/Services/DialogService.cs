@@ -3,6 +3,7 @@ using System.Windows;
 using MdReader.Core.Cli;
 using MdReader.Core.Diagnostics;
 using MdReader.Core.Paths;
+using MdReader.Shell.Services;
 using Microsoft.Win32;
 
 namespace MdReader.App.Services;

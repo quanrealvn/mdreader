@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Phase 1 of docs/AVALONIA-PLAN.md: the Avalonia shell still runs on the WebView2 backend, so the spike is
+         Windows-only. The TFM becomes net10.0 (plus per-RID backends) when the macOS channel lands in phase 2. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>MdReader.Ui</AssemblyName>
+    <RootNamespace>MdReader.Ui</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WebView/NativeMethods.cs uses [LibraryImport] and [UnmanagedCallersOnly]; both need unsafe blocks. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Microsoft.Web.WebView2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MdReader.Core\MdReader.Core.csproj" />
+    <ProjectReference Include="..\MdReader.Shell\MdReader.Shell.csproj" />
+    <ProjectReference Include="..\MdReader.Edge\MdReader.Edge.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same as MdReader.App: the web assets live at the repo root and are copied to <output>\web. -->
+    <Content Include="..\..\web\**\*" LinkBase="web" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The WebView2 package references its WPF and WinForms wrappers unconditionally. This project uses neither, and
+       keeping them pulls in WindowsBase 5.0.0.0, which conflicts with the net10.0 facade (MSB3277). -->
+  <Target Name="RemoveWebView2DesktopUiAssemblies" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <_WebView2DesktopUiReference Include="@(Reference)"
+                                   Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" />
+      <Reference Remove="@(_WebView2DesktopUiReference)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

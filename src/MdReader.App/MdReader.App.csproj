@@ -22,6 +22,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MdReader.Core\MdReader.Core.csproj" />
+    <ProjectReference Include="..\MdReader.Shell\MdReader.Shell.csproj" />
+    <ProjectReference Include="..\MdReader.Edge\MdReader.Edge.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -8,7 +8,9 @@ using System.Windows.Input;
 using System.Windows.Media;
 using MdReader.App.Commands;
 using MdReader.App.Services;
-using MdReader.App.ViewModels;
+using MdReader.Shell.Commands;
+using MdReader.Shell.Services;
+using MdReader.Shell.ViewModels;
 using MdReader.Core.Cli;
 using Microsoft.Web.WebView2.Core;
 
@@ -19,11 +21,11 @@ namespace MdReader.App.Views;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
-    private readonly IThemeService _theme;
+    private readonly WpfThemeWindows _theme;
     private readonly CommandLineOptions _options;
     private readonly HashSet<ContextMenu> _wiredMenus = [];
 
-    public MainWindow(MainViewModel viewModel, KeyboardShortcuts shortcuts, IThemeService theme, WindowPlacementService placement,
+    public MainWindow(MainViewModel viewModel, WpfShortcutRouter shortcuts, WpfThemeWindows theme, WindowPlacementService placement,
                       CommandLineOptions options)
     {
         _viewModel = viewModel;

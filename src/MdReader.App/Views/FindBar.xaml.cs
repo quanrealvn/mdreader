@@ -1,19 +1,18 @@
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
-using MdReader.App.Services;
 using MdReader.Core.Diagnostics;
-using Microsoft.Web.WebView2.Core;
+using MdReader.Shell.Documents;
+using MdReader.Shell.Services;
 
 namespace MdReader.App.Views;
 
 /// <summary>
-/// WPF find bar over the native WebView2 Find API (ARCHITECTURE §4.12): 150 ms debounced restart on text change,
-/// "3/18" match count, Enter/Shift+Enter (F3/Shift+F3 and Esc are routed here by <see cref="DocumentView"/>).
-/// If the runtime lacks the Find API it disables itself with a status message (risk R15).
+/// WPF find bar over <see cref="IWebViewChannel"/>'s find capability (ARCHITECTURE §4.12): 150 ms debounced restart on
+/// text change, "3/18" match count, Enter/Shift+Enter (F3/Shift+F3 and Esc are routed here by <see cref="DocumentView"/>).
+/// If the runtime has no find API the channel says so and the bar disables itself with a status message (risk R15).
 /// </summary>
 public partial class FindBar : UserControl
 {
@@ -21,17 +20,12 @@ public partial class FindBar : UserControl
     private const string UnavailableMessage = "Find isn't available with the installed WebView2 Runtime. Update it to use Find.";
     private static readonly TimeSpan DebounceDelay = TimeSpan.FromMilliseconds(150);
 
-    // HRESULTs meaning "the installed runtime doesn't implement the Find API".
-    private const int EPointerNotImplemented = unchecked((int)0x80004001);   // E_NOTIMPL
-    private const int ENoInterface = unchecked((int)0x80004002);             // E_NOINTERFACE
-    private const int RegDbClassNotRegistered = unchecked((int)0x80040154);  // REGDB_E_CLASSNOTREG
-
     private readonly DispatcherTimer _debounce;
-    private Func<CoreWebView2?>? _coreProvider;
+    private Func<IWebViewChannel?>? _channelProvider;
     private Action? _focusWebView;
     private IStatusNotifier? _status;
     private IAppLog _log = NullAppLog.Instance;
-    private CoreWebView2Find? _find;
+    private FindSession? _session;
     private string _activeTerm = "";
     private int _searchGeneration;
     private bool _unavailable;
@@ -46,9 +40,9 @@ public partial class FindBar : UserControl
 
     public bool IsOpen => Visibility == Visibility.Visible;
 
-    internal void Attach(Func<CoreWebView2?> coreProvider, Action focusWebView, IStatusNotifier status, IAppLog log)
+    internal void Attach(Func<IWebViewChannel?> channelProvider, Action focusWebView, IStatusNotifier status, IAppLog log)
     {
-        _coreProvider = coreProvider;
+        _channelProvider = channelProvider;
         _focusWebView = focusWebView;
         _status = status;
         _log = log;
@@ -104,18 +98,18 @@ public partial class FindBar : UserControl
         Navigate(backwards);
     }
 
-    /// Ends the native find session (tab close, bar close). Safe to call at any time.
+    /// Ends the find session (tab close, bar close). Safe to call at any time.
     public void StopFind()
     {
         _searchGeneration++;
         _activeTerm = "";
         try
         {
-            _find?.Stop();
+            _channelProvider?.Invoke()?.StopFind();
         }
         catch (Exception ex)
         {
-            _log.Write(AppLogLevel.Debug, Category, "Find.Stop failed.", ex);
+            _log.Write(AppLogLevel.Debug, Category, "StopFind failed.", ex);
         }
 
         UpdateCount();
@@ -136,10 +130,16 @@ public partial class FindBar : UserControl
         }
 
         // A term that hasn't been searched yet starts a new search from the first match.
-        if (_debounce.IsEnabled || !string.Equals(_activeTerm, FindTextBox.Text, StringComparison.Ordinal) || _find is null)
+        if (_debounce.IsEnabled || !string.Equals(_activeTerm, FindTextBox.Text, StringComparison.Ordinal) || _session is null)
         {
             _debounce.Stop();
             _ = RestartAsync();
+            return;
+        }
+
+        IWebViewChannel? channel = _channelProvider?.Invoke();
+        if (channel is null)
+        {
             return;
         }
 
@@ -147,14 +147,14 @@ public partial class FindBar : UserControl
         {
             if (backwards)
             {
-                _find.FindPrevious();
+                channel.FindPrevious();
             }
             else
             {
-                _find.FindNext();
+                channel.FindNext();
             }
         }
-        catch (Exception ex) when (IsUnsupported(ex))
+        catch (FindNotSupportedException ex)
         {
             Disable(ex);
         }
@@ -168,8 +168,8 @@ public partial class FindBar : UserControl
     {
         int generation = ++_searchGeneration;
         string term = FindTextBox.Text;
-        CoreWebView2? core = _coreProvider?.Invoke();
-        if (core is null || _unavailable)
+        IWebViewChannel? channel = _channelProvider?.Invoke();
+        if (channel is null || _unavailable)
         {
             _activeTerm = "";
             UpdateCount();
@@ -178,28 +178,24 @@ public partial class FindBar : UserControl
 
         try
         {
-            CoreWebView2Find find = EnsureFind(core);
-            find.Stop();
+            // The channel stops the running session synchronously, so _activeTerm may be adopted before the await.
+            Task<FindSession?> starting = channel.StartFindAsync(term);
             _activeTerm = term;
-            if (term.Length == 0)
+            FindSession? session = await starting;
+            if (session is null)
             {
+                _activeTerm = "";
                 UpdateCount();
                 return;
             }
 
-            CoreWebView2FindOptions options = core.Environment.CreateFindOptions();
-            options.FindTerm = term;
-            options.IsCaseSensitive = false;
-            options.ShouldMatchWord = false;
-            options.SuppressDefaultFindDialog = true;
-            options.ShouldHighlightAllMatches = true;
-            await find.StartAsync(options);
-            if (generation == _searchGeneration)
+            AttachSession(session);
+            if (term.Length == 0 || generation == _searchGeneration)
             {
                 UpdateCount();
             }
         }
-        catch (Exception ex) when (IsUnsupported(ex))
+        catch (FindNotSupportedException ex)
         {
             Disable(ex);
         }
@@ -216,39 +212,35 @@ public partial class FindBar : UserControl
         }
     }
 
-    private CoreWebView2Find EnsureFind(CoreWebView2 core)
+    private void AttachSession(FindSession session)
     {
-        if (_find is null)
+        if (ReferenceEquals(session, _session))
         {
-            CoreWebView2Find find = core.Find;
-            find.MatchCountChanged += OnFindCountersChanged;
-            find.ActiveMatchIndexChanged += OnFindCountersChanged;
-            _find = find;
+            return;
         }
 
-        return _find;
+        if (_session is { } previous)
+        {
+            previous.CountersChanged -= OnFindCountersChanged;
+        }
+
+        _session = session;
+        session.CountersChanged += OnFindCountersChanged;
     }
 
-    private void OnFindCountersChanged(object? sender, object e) => UpdateCount();
+    private void OnFindCountersChanged(object? sender, EventArgs e) => UpdateCount();
 
     private void UpdateCount()
     {
-        try
+        if (_activeTerm.Length == 0 || _session is not { } session)
         {
-            if (_activeTerm.Length == 0 || _find is null)
-            {
-                FindMatchCount.Text = "";
-                return;
-            }
+            FindMatchCount.Text = "";
+            return;
+        }
 
-            int count = Math.Max(0, _find.MatchCount);
-            int active = Math.Max(0, _find.ActiveMatchIndex);   // 1-based, −1 = none
-            FindMatchCount.Text = string.Create(CultureInfo.InvariantCulture, $"{active}/{count}");
-        }
-        catch (Exception ex)
-        {
-            _log.Write(AppLogLevel.Debug, Category, "Reading the match count failed.", ex);
-        }
+        int count = Math.Max(0, session.MatchCount);
+        int active = Math.Max(0, session.ActiveMatchIndex);   // 1-based, −1 = none
+        FindMatchCount.Text = string.Create(CultureInfo.InvariantCulture, $"{active}/{count}");
     }
 
     private void Disable(Exception ex)
@@ -263,12 +255,6 @@ public partial class FindBar : UserControl
         _status?.ShowStatus(UnavailableMessage);
     }
 
-    /// Only "this runtime has no Find API" disables find for good (R15). Anything else (a renderer that crashed or was
-    /// busy, a transient COM error) is retried on the next input.
-    private static bool IsUnsupported(Exception ex) =>
-        ex is NotImplementedException
-        || (ex is COMException or InvalidCastException && ex.HResult is EPointerNotImplemented or ENoInterface or RegDbClassNotRegistered);
-
     private void MarkTransientFailure(string what, Exception ex)
     {
         _log.Write(AppLogLevel.Warning, Category, $"{what} failed; find will retry on the next input.", ex);
@@ -276,24 +262,15 @@ public partial class FindBar : UserControl
         FindMatchCount.Text = "—";
     }
 
-    /// The tab's WebView2 is being replaced (recovery): the old CoreWebView2Find dies with it.
+    /// The tab's web view is being replaced (recovery): the find session dies with it.
     internal void ResetSession()
     {
         _debounce.Stop();
         StopFind();
-        if (_find is { } find)
+        if (_session is { } session)
         {
-            try
-            {
-                find.MatchCountChanged -= OnFindCountersChanged;
-                find.ActiveMatchIndexChanged -= OnFindCountersChanged;
-            }
-            catch (Exception ex)
-            {
-                _log.Write(AppLogLevel.Debug, Category, "Unsubscribing from the old find session failed.", ex);
-            }
-
-            _find = null;
+            session.CountersChanged -= OnFindCountersChanged;
+            _session = null;
         }
 
         UpdateCount();

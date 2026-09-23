@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using MdReader.App.Interop;
 using MdReader.Core.Diagnostics;
+using MdReader.Shell.Services;
 
 namespace MdReader.App.Services;
 

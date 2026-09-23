@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Not "MdReader.WebView2": a namespace named WebView2 under MdReader shadows the imported
+         Microsoft.Web.WebView2.Wpf.WebView2 control type in every MdReader.* namespace (the same shadowing that made
+         MdReader.Avalonia a bad root namespace). "Edge" is the runtime this backend talks to. -->
+    <RootNamespace>MdReader.Edge</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MdReader.Core\MdReader.Core.csproj" />
+    <ProjectReference Include="..\MdReader.Shell\MdReader.Shell.csproj" />
+  </ItemGroup>
+
+  <!-- The WebView2 package references its WPF and WinForms wrappers unconditionally. This project uses neither, and
+       keeping them pulls in WindowsBase 5.0.0.0, which conflicts with the net10.0 facade (MSB3277). -->
+  <Target Name="RemoveWebView2DesktopUiAssemblies" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <_WebView2DesktopUiReference Include="@(Reference)"
+                                   Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" />
+      <Reference Remove="@(_WebView2DesktopUiReference)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

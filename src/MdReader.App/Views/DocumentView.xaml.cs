@@ -5,11 +5,14 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using MdReader.App.Documents;
-using MdReader.App.ViewModels;
+using MdReader.Edge;
+using MdReader.Shell.Documents;
+using MdReader.Shell.ViewModels;
 using MdReader.Core.Diagnostics;
 using MdReader.Core.Documents;
 using MdReader.Core.Protocol;
 using MdReader.Core.Settings;
+using MdReader.Core.Theming;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
@@ -25,7 +28,7 @@ namespace MdReader.App.Views;
 /// recover, from the WPF error's "Try again", after a failed initialization or after the browser process exited — both
 /// leave the old control unusable.
 /// </remarks>
-public partial class DocumentView : UserControl
+public partial class DocumentView : UserControl, IDocumentTabView
 {
     private const string Category = "DocumentView";
     private const double ZoomEpsilon = 0.001;
@@ -67,7 +70,7 @@ public partial class DocumentView : UserControl
         UpdateItemStatus();
 
         CreateWebView();
-        FindBarControl.Attach(() => _bridge?.Core, FocusWebView, services.Status, services.Log);
+        FindBarControl.Attach(() => _bridge, FocusWebView, services.Status, services.Log);
 
         tab.Session.StateChanged += OnSessionStateChanged;
         tab.Session.EditorTextReplaced += OnEditorTextReplaced;
@@ -83,7 +86,7 @@ public partial class DocumentView : UserControl
     }
 
     /// Ctrl+F (deferred by the keyboard router).
-    internal void ShowFind()
+    public void ShowFind()
     {
         if (!_disposed && _tab is not null)
         {
@@ -91,7 +94,7 @@ public partial class DocumentView : UserControl
         }
     }
 
-    internal void StopFind()
+    public void StopFind()
     {
         if (_tab is not null)
         {
@@ -105,7 +108,7 @@ public partial class DocumentView : UserControl
     internal bool IsSplitView => _splitView;
 
     /// Shows or hides the editor pane. Opening it seeds the text box from the session's buffer and focuses it.
-    internal void SetSplitView(bool enabled)
+    public void SetSplitView(bool enabled)
     {
         if (_disposed || _tab is null || _splitView == enabled)
         {
@@ -214,7 +217,7 @@ public partial class DocumentView : UserControl
     }
 
     /// Last step of the tab's Dispose (§4.11): after the find session and the DocumentSession.
-    internal void DisposeWebView()
+    public void DisposeWebView()
     {
         if (_disposed || _tab is null)
         {
@@ -248,14 +251,14 @@ public partial class DocumentView : UserControl
         var webView = new WebView2();
         AutomationProperties.SetAutomationId(webView, "WebView");
 
-        // Before the controller exists, so the first frame already has the page background (no white flash).
-        WebViewSecurity.ApplyTheme(webView, null, services.Theme.EffectiveTheme, services.Log);
-        webView.AllowExternalDrop = true;
-        webView.ZoomFactor = services.Settings.Current.Zoom;
-        webView.ZoomFactorChanged += OnZoomFactorChanged;
-        webView.GotFocus += OnWebViewGotFocus;
-
         var bridge = new WebViewBridge(webView, services.Theme, services.Settings, services.Paths, services.Perf, services.Log, services.Time);
+
+        // Before the controller exists, so the first frame already has the page background (no white flash).
+        ApplyPageBackground(bridge, services.Theme.EffectiveTheme);
+        webView.AllowExternalDrop = true;
+        bridge.SetZoom(services.Settings.Current.Zoom);
+        bridge.ZoomChanged += OnZoomFactorChanged;
+        webView.GotFocus += OnWebViewGotFocus;
         bridge.HostFailed += OnBridgeHostFailed;
 
         _webView = webView;
@@ -266,11 +269,12 @@ public partial class DocumentView : UserControl
 
     private void DestroyWebView(bool detachSession)
     {
-        FindBarControl.ResetSession();   // its CoreWebView2Find dies with the control
+        FindBarControl.ResetSession();   // the find session dies with the control
         if (_bridge is { } bridge)
         {
             _bridge = null;
             bridge.HostFailed -= OnBridgeHostFailed;
+            bridge.ZoomChanged -= OnZoomFactorChanged;
             if (detachSession)
             {
                 _tab?.Session.Detach(bridge);
@@ -282,7 +286,6 @@ public partial class DocumentView : UserControl
         if (_webView is { } webView)
         {
             _webView = null;
-            webView.ZoomFactorChanged -= OnZoomFactorChanged;
             webView.GotFocus -= OnWebViewGotFocus;
             try
             {
@@ -331,7 +334,10 @@ public partial class DocumentView : UserControl
         WebViewBridge bridge = _bridge;
         try
         {
-            CoreWebView2Environment environment = await services.Environment.GetAsync();
+            // The shared layer only knows IWebViewEnvironmentProvider; the WebView2 environment itself comes from the
+            // backend's own contract, which the composition root registers for the same singleton.
+            var provider = (IWebView2EnvironmentProvider)services.Environment;
+            CoreWebView2Environment environment = await provider.GetAsync();
             string resourceRoot = await tab.Session.ResourceRootTask;
             if (_disposed || !ReferenceEquals(bridge, _bridge))
             {
@@ -498,10 +504,18 @@ public partial class DocumentView : UserControl
             return;
         }
 
-        if (!_disposed && _tab is not null && _webView is not null)
+        if (!_disposed && _tab is not null && _bridge is { } bridge)
         {
-            WebViewSecurity.ApplyTheme(_webView, _bridge?.Core, _tab.ViewServices.Theme.EffectiveTheme, _tab.ViewServices.Log);
+            ApplyPageBackground(bridge, _tab.ViewServices.Theme.EffectiveTheme);
+            bridge.SetPreferredColorScheme(_tab.ViewServices.Theme.EffectiveTheme);
         }
+    }
+
+    /// The colour the WebView paints before the page has drawn anything (§10).
+    private static void ApplyPageBackground(WebViewBridge bridge, AppTheme theme)
+    {
+        (byte r, byte g, byte b) = ThemePalette.PageBackground(theme);
+        bridge.SetBackgroundColor(r, g, b);
     }
 
     private void OnSettingsChanged(object? sender, AppSettings settings)
@@ -512,7 +526,7 @@ public partial class DocumentView : UserControl
             return;
         }
 
-        if (_disposed || _webView is not { } webView)
+        if (_disposed || _bridge is not { } bridge)
         {
             return;
         }
@@ -520,9 +534,9 @@ public partial class DocumentView : UserControl
         try
         {
             // Zoom is global: every tab follows the setting; our own echo (|Δ| < 0.001) is ignored.
-            if (Math.Abs(webView.ZoomFactor - settings.Zoom) >= ZoomEpsilon)
+            if (Math.Abs(bridge.Zoom - settings.Zoom) >= ZoomEpsilon)
             {
-                webView.ZoomFactor = settings.Zoom;
+                bridge.SetZoom(settings.Zoom);
             }
         }
         catch (Exception ex)
@@ -534,7 +548,7 @@ public partial class DocumentView : UserControl
     /// Ctrl+wheel inside the page (IsZoomControlEnabled) → persist the global zoom.
     private void OnZoomFactorChanged(object? sender, EventArgs e)
     {
-        if (_disposed || _tab is null || sender is not WebView2 webView || !ReferenceEquals(webView, _webView))
+        if (_disposed || _tab is null || sender is not WebViewBridge bridge || !ReferenceEquals(bridge, _bridge))
         {
             return;
         }
@@ -542,7 +556,7 @@ public partial class DocumentView : UserControl
         try
         {
             SettingsCoordinator settings = _tab.ViewServices.Settings;
-            double zoom = webView.ZoomFactor;
+            double zoom = bridge.Zoom;
             if (Math.Abs(zoom - settings.Current.Zoom) < ZoomEpsilon)
             {
                 return;
@@ -550,9 +564,9 @@ public partial class DocumentView : UserControl
 
             double clamped = ZoomLevels.Clamp(zoom);
             settings.Update(s => s with { Zoom = clamped });
-            if (Math.Abs(webView.ZoomFactor - clamped) >= ZoomEpsilon)
+            if (Math.Abs(bridge.Zoom - clamped) >= ZoomEpsilon)
             {
-                webView.ZoomFactor = clamped;
+                bridge.SetZoom(clamped);
             }
         }
         catch (Exception ex)

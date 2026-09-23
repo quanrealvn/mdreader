@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using MdReader.Core.Cli;
 using MdReader.Core.Diagnostics;
+using MdReader.Shell.Services;
 
 namespace MdReader.App.Services;
 

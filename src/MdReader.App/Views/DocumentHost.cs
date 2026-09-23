@@ -4,7 +4,9 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
-using MdReader.App.ViewModels;
+using MdReader.Shell.Commands;
+using MdReader.Shell.Services;
+using MdReader.Shell.ViewModels;
 
 namespace MdReader.App.Views;
 
@@ -155,7 +157,7 @@ public sealed class DocumentHost : Grid
         }
 
         // A tab gets exactly one view (one WebView2) for its whole life; a tab that comes back after a Reset keeps it.
-        DocumentView view = viewModel.View ?? new DocumentView(viewModel);
+        DocumentView view = viewModel.View as DocumentView ?? new DocumentView(viewModel);
         view.Visibility = tab.IsActive ? Visibility.Visible : Visibility.Hidden;
         tab.PropertyChanged += OnTabPropertyChanged;
         _views.Add(tab, view);

@@ -1,22 +1,22 @@
-using System.Globalization;
 using MdReader.App.Commands;
 using MdReader.App.Services;
-using MdReader.App.ViewModels;
+using MdReader.App.Threading;
 using MdReader.App.Views;
 using MdReader.Core.Cli;
 using MdReader.Core.Diagnostics;
-using MdReader.Core.Documents;
 using MdReader.Core.Hosting;
-using MdReader.Core.Paths;
-using MdReader.Core.Rendering;
-using MdReader.Core.Settings;
 using MdReader.Core.SingleInstance;
+using MdReader.Edge;
+using MdReader.Shell.Composition;
+using MdReader.Shell.Services;
+using MdReader.Shell.Threading;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace MdReader.App.Composition;
 
-/// Composition root (§4.11). Everything is a singleton; DocumentSession/DocumentTabViewModel are created per tab by
-/// DocumentOpener via ActivatorUtilities, so every service they need must be registered here.
+/// The WPF overlay on <see cref="ShellServices.AddShellCore"/> (§4.11): the UI thread, the application host, the window,
+/// dialogs, clipboard, placement, theming glue and the WebView2 backend. Everything else is registered by the shared
+/// shell, so a second shell only replaces this file.
 public static class ServiceRegistration
 {
     public static IServiceProvider Build(CommandLineOptions options, AppPaths paths, ISingleInstanceChannel? singleInstanceChannel)
@@ -31,71 +31,28 @@ public static class ServiceRegistration
         ArgumentNullException.ThrowIfNull(paths);
 
         var services = new ServiceCollection();
+        services.AddShellCore(options, paths, singleInstanceChannel, log);
 
-        // Host basics
-        services.AddSingleton(options);
-        services.AddSingleton(paths);
-        if (log is null)
-        {
-            services.AddSingleton<IAppLog>(_ => CreateLog(paths));   // factory: disposed with the container
-        }
-        else
-        {
-            services.AddSingleton(log);
-        }
-
-        if (singleInstanceChannel is not null)
-        {
-            services.AddSingleton(singleInstanceChannel);
-        }
-
-        services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<ISettingsStore>(sp => new JsonSettingsStore(paths.SettingsFile, sp.GetRequiredService<IAppLog>()));
-        services.AddSingleton(sp => new SettingsCoordinator(sp.GetRequiredService<ISettingsStore>(), sp.GetRequiredService<IAppLog>(),
-                                                            sp.GetRequiredService<TimeProvider>()));
-
-        // Core pipeline
-        services.AddSingleton<IFileSystemProbe>(PhysicalFileSystemProbe.Instance);
-        services.AddSingleton<IMarkdownRenderer>(sp => new MarkdownRenderer(sp.GetRequiredService<IFileSystemProbe>()));
-        services.AddSingleton(sp => new LinkClassifier(sp.GetRequiredService<IFileSystemProbe>()));
-        services.AddSingleton(sp => new ResourceRootResolver(sp.GetRequiredService<IFileSystemProbe>()));
-        services.AddSingleton<IDocumentLoader>(sp => new DocumentLoader(
-            new DocumentLoaderOptions { FallbackCodePage = CultureInfo.CurrentCulture.TextInfo.ANSICodePage },
-            sp.GetRequiredService<TimeProvider>()));
-        services.AddSingleton<IDocumentWatcherFactory>(sp => new DocumentWatcherFactory(sp.GetRequiredService<IAppLog>(),
-                                                                                         sp.GetRequiredService<TimeProvider>()));
-
-        // App services
-        services.AddSingleton<ThemeService>();
-        services.AddSingleton<IThemeService>(sp => sp.GetRequiredService<ThemeService>());
-        services.AddSingleton<IWebViewEnvironmentProvider, WebViewEnvironmentProvider>();
-        services.AddSingleton<IDocumentOpener, DocumentOpener>();
-        services.AddSingleton(sp => new Lazy<IDocumentOpener>(sp.GetRequiredService<IDocumentOpener>));
+        // The WPF shell itself. Built on the UI thread, so the dispatcher is this thread's.
+        services.AddSingleton<IUiDispatcher>(new WpfUiDispatcher());
+        services.AddSingleton<IAppHost>(new WpfAppHost(options));
+        services.AddSingleton<ISystemThemeProbe, WindowsThemeProbe>();
+        services.AddSingleton<WpfThemeWindows>();
         services.AddSingleton<IExternalLauncher, ExternalLauncher>();
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
-        services.AddSingleton<UiStallMonitor>();
-        services.AddSingleton<PerfRecorder>();
-        services.AddSingleton<IPerfRecorder>(sp => sp.GetRequiredService<PerfRecorder>());
         services.AddSingleton<WindowActivator>();
         services.AddSingleton<WindowPlacementService>();
-        services.AddSingleton<CaptureRunner>();
-        services.AddSingleton<SessionService>();
-
-        // Shell
-        services.AddSingleton<MainViewModel>();
-        services.AddSingleton<ITabHost>(sp => sp.GetRequiredService<MainViewModel>());
-        services.AddSingleton<IStatusNotifier>(sp => sp.GetRequiredService<MainViewModel>());
-        services.AddSingleton<KeyboardShortcuts>();
+        services.AddSingleton<WpfShortcutRouter>();
         services.AddSingleton<MainWindow>();
+
+        // WebView2 backend (shared with the Avalonia shell through MdReader.Edge).
+        services.AddSingleton<WebView2EnvironmentProvider>();
+        services.AddSingleton<IWebView2EnvironmentProvider>(sp => sp.GetRequiredService<WebView2EnvironmentProvider>());
+        services.AddSingleton<IWebViewEnvironmentProvider>(sp => sp.GetRequiredService<WebView2EnvironmentProvider>());
 
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
     }
 
-    internal static FileAppLog CreateLog(AppPaths paths) =>
-#if DEBUG
-        new(paths.LogsFolder, AppLogLevel.Debug);
-#else
-        new(paths.LogsFolder, AppLogLevel.Info);
-#endif
+    internal static FileAppLog CreateLog(AppPaths paths) => ShellServices.CreateLog(paths);
 }

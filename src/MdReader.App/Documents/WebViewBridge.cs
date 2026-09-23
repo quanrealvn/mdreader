@@ -1,11 +1,13 @@
 using System.IO;
-using MdReader.App.Services;
 using MdReader.Core.Diagnostics;
 using MdReader.Core.Hosting;
 using MdReader.Core.Paths;
 using MdReader.Core.Protocol;
 using MdReader.Core.Settings;
 using MdReader.Core.Theming;
+using MdReader.Edge;
+using MdReader.Shell.Documents;
+using MdReader.Shell.Services;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
@@ -40,6 +42,7 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
     private readonly IAppLog _log;
     private readonly TimeProvider _time;
     private readonly Queue<long> _renderProcessFailures = new();
+    private readonly CoreWebView2Operations _operations;
 
     private CoreWebView2? _core;
     private string? _unmappedDocumentRoot;   // doc folder that didn't exist yet (DirectoryNotFoundException)
@@ -57,11 +60,11 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
         _perf = perf;
         _log = log;
         _time = time;
+        _operations = new CoreWebView2Operations(() => _disposed ? null : _core, log);
+        _webView.ZoomFactorChanged += OnZoomFactorChanged;
     }
 
     public bool IsReady { get; private set; }
-
-    public CoreWebView2? Core => _disposed ? null : _core;
 
     public event EventHandler? Ready;
 
@@ -74,7 +77,7 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
     internal event EventHandler<WebViewHostFailedEventArgs>? HostFailed;
 
     /// True when local images can't be served because the resource root couldn't be mapped (path too long, etc.).
-    internal bool LocalResourcesUnavailable { get; private set; }
+    public bool LocalResourcesUnavailable { get; private set; }
 
     public async Task InitializeAsync(CoreWebView2Environment environment, string resourceRoot)
     {
@@ -91,7 +94,8 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
         _core = core;
         _perf.Mark(PerfMarks.WebViewReady);
 
-        WebViewSecurity.Apply(_webView, core, _theme.EffectiveTheme, _log, OnLinkNavigation);
+        WebViewSecurity.Apply(core, _theme.EffectiveTheme, _log, OnLinkNavigation);
+        _webView.AllowExternalDrop = true;   // lives on the WPF control, not on CoreWebView2
 
         // The app host must map, or nothing can be shown: let that exception reach the view.
         core.SetVirtualHostNameToFolderMapping(ProtocolConstants.AppHost, _paths.WebRoot, CoreWebView2HostResourceAccessKind.Deny);
@@ -130,9 +134,52 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
         }
     }
 
+    // ----- Capabilities (§4.10): find, print, capture, zoom and theme, so nothing outside needs the CoreWebView2 -----
+
+    public Task<FindSession?> StartFindAsync(string term) => _operations.StartFindAsync(term);
+
+    public void FindNext() => _operations.FindNext();
+
+    public void FindPrevious() => _operations.FindPrevious();
+
+    public void StopFind() => _operations.StopFind();
+
+    public Task ShowPrintUiAsync() => _operations.ShowPrintUiAsync();
+
+    public Task<bool> PrintToPdfAsync(string pdfPath) => _operations.PrintToPdfAsync(pdfPath);
+
+    public Task CapturePreviewAsync(Stream pngDestination) => _operations.CapturePreviewAsync(pngDestination);
+
+    public double Zoom => _webView.ZoomFactor;
+
+    public void SetZoom(double zoomFactor) => _webView.ZoomFactor = zoomFactor;
+
+    public event EventHandler? ZoomChanged;
+
+    /// Works before the controller exists: the WPF control carries the value over to it.
+    public void SetBackgroundColor(byte red, byte green, byte blue)
+    {
+        try
+        {
+            _webView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, red, green, blue);
+        }
+        catch (Exception ex)
+        {
+            _log.Write(AppLogLevel.Warning, Category, "Couldn't apply the theme to the WebView.", ex);
+        }
+    }
+
+    public void SetPreferredColorScheme(AppTheme theme)
+    {
+        if (_core is { } core && !_disposed)
+        {
+            WebViewSecurity.ApplyPreferredColorScheme(core, theme, _log);
+        }
+    }
+
     /// Retries the doc-host mapping if the document folder didn't exist at initialization. Called before a render
     /// payload is posted, so a folder created later (file restored) still gets its images.
-    internal void EnsureDocumentRootMapped()
+    public void EnsureResourceRootMapped()
     {
         if (_unmappedDocumentRoot is { } root && _core is not null && !_disposed)
         {
@@ -166,6 +213,8 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
 
         _disposed = true;
         IsReady = false;
+        _operations.Dispose();
+        _webView.ZoomFactorChanged -= OnZoomFactorChanged;
         CoreWebView2? core = _core;
         _core = null;
         if (core is null)
@@ -183,6 +232,14 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
         catch (Exception ex)
         {
             _log.Write(AppLogLevel.Debug, Category, "Unsubscribing from CoreWebView2 events failed.", ex);
+        }
+    }
+
+    private void OnZoomFactorChanged(object? sender, EventArgs e)
+    {
+        if (!_disposed)
+        {
+            ZoomChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 

@@ -10,7 +10,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime"
-                    xmlns:cmd="clr-namespace:MdReader.App.Commands">
+                    xmlns:cmd="clr-namespace:MdReader.Shell.Commands;assembly=MdReader.Shell">
 
     <!-- ===== Typography ===== -->
     <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI</FontFamily>

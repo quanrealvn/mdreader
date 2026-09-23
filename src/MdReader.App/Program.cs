@@ -5,7 +5,8 @@ using System.Windows;
 using MdReader.App.Composition;
 using MdReader.App.Interop;
 using MdReader.App.Services;
-using MdReader.App.ViewModels;
+using MdReader.Shell.Services;
+using MdReader.Shell.ViewModels;
 using MdReader.App.Views;
 using MdReader.Core.Cli;
 using MdReader.Core.Diagnostics;
@@ -128,7 +129,7 @@ public static class Program
     {
         var app = new App();
         app.InitializeComponent();
-        var crashHandler = new CrashHandler(options, paths, log);
+        var crashHandler = new CrashHandler(new CrashReporter(options, paths, new WpfAppHost(options), log));
         crashHandler.Install(app);
 
         ServiceProvider? services = null;
@@ -141,7 +142,8 @@ public static class Program
 
             services.GetRequiredService<IWebViewEnvironmentProvider>().Start();      // as early as possible (§6)
 
-            var theme = services.GetRequiredService<ThemeService>();                 // applies the palette
+            var theme = services.GetRequiredService<ThemeService>();                 // resolves the effective theme
+            _ = services.GetRequiredService<WpfThemeWindows>();                      // applies the palette, follows changes
             if (options.ThemeOverride is { } themeOverride)
             {
                 theme.ApplySessionOverride(themeOverride);
@@ -158,7 +160,7 @@ public static class Program
             var capture = services.GetRequiredService<CaptureRunner>();
             if (capture.IsEnabled)
             {
-                capture.Start(app.Dispatcher);                                          // opens the first file only
+                capture.Start();                                                        // opens the first file only
             }
             else if (session is not null)
             {
@@ -211,7 +213,7 @@ public static class Program
 
             if (perf.IsEnabled)
             {
-                services.GetRequiredService<UiStallMonitor>().Start(app.Dispatcher);
+                services.GetRequiredService<UiStallMonitor>().Start();
             }
 
             exitCode = app.Run();
