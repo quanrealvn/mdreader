@@ -28,9 +28,12 @@ const TOAST_TOO_BIG_TO_KEEP = "Some documents are too large to keep after reload
 const DEFAULT_SPLIT_RATIO = 45;
 const MIN_SPLIT_RATIO = 20;
 const MAX_SPLIT_RATIO = 80;
-// A task checkbox's source line, e.g. "  - [ ] Buy milk" or "1. [x] Done" (Markdig's task
-// list syntax: a list marker, then `[ ]`/`[x]`/`[X]`). Group 2 is the marker character.
-const TASK_LINE = /^(\s*(?:[-*+]|\d+[.)])\s+)\[([ xX])\](.*)$/;
+// A task checkbox's source line, e.g. "  - [ ] Buy milk" or "1. [x] Done": optional
+// indentation, a bullet (-, +, *) or an ordered marker (1. / 1)), at least one space/tab,
+// then [ ]/[x]/[X], then a space/tab or end of line. Mirrors Core's TaskListToggle.FindMarker
+// (§4.4) so a click flips the same character the desktop would. Group 1 is everything up to
+// (not including) the marker char; group 2 is the marker char itself.
+const TASK_LINE = /^([ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]+\[)([ xX])(\]($|[ \t]))/;
 
 const SESSION_KEY = "mdreader.session.v1";
 // Legacy single-document keys (pre-tabs), migrated once then removed.
@@ -759,32 +762,61 @@ function renderFromInput() {
 // task list checkboxes (web -> host `taskToggle`, sent by web/js/tasks.js)
 // ---------------------------------------------------------------------------------
 
-/** Flips the first `[ ]`/`[x]` marker on `markdown`'s 1-based `line`. Returns the updated
- * text, or null if that line no longer looks like a task list item. */
-function toggleTaskLine(markdown, line) {
-  const lines = markdown.split("\n");
-  const idx = line - 1;
-  if (idx < 0 || idx >= lines.length) return null;
-  const match = TASK_LINE.exec(lines[idx]);
+/** Character range [start, end) of `markdown`'s 1-based `line`, excluding its line break —
+ * counting \n, \r\n and lone \r as one break each, the way Markdig (and Core's
+ * TaskListToggle.TryGetLine) does. Returns null if the file has fewer lines. */
+function findLineRange(markdown, line) {
+  let i = 0;
+  let current = 1;
+  for (;;) {
+    const lineStart = i;
+    while (i < markdown.length && markdown[i] !== "\n" && markdown[i] !== "\r") i++;
+    if (current === line) return [lineStart, i];
+    if (i >= markdown.length) return null;
+    i += markdown[i] === "\r" && markdown[i + 1] === "\n" ? 2 : 1;
+    current++;
+  }
+}
+
+/** Sets the marker of the task item on `markdown`'s 1-based `line` to `checked`. Returns the
+ * updated text (unchanged if the marker already matched), or null if the line is out of range
+ * or isn't a task item any more — mirrors Core's TaskListToggle.TryToggle (§4.4) so a stale
+ * line number (the file changed under the render that produced the click) is refused rather
+ * than guessed at. Only the one marker character changes; everything else is copied through. */
+function toggleTaskLine(markdown, line, checked) {
+  const range = findLineRange(markdown, line);
+  if (!range) return null;
+  const [start, end] = range;
+  const match = TASK_LINE.exec(markdown.slice(start, end));
   if (!match) return null;
-  const mark = match[2] === " " ? "x" : " ";
-  lines[idx] = match[1] + "[" + mark + "]" + match[3];
-  return lines.join("\n");
+  const index = start + match[1].length;
+  const wanted = checked ? "x" : " ";
+  if (markdown[index] === wanted) return markdown;
+  return markdown.slice(0, index) + wanted + markdown.slice(index + 1);
 }
 
 function onTaskToggle(message) {
   const tab = getActiveTab();
   if (!tab) return;
+  // The render on screen when the click happened may already be superseded (a newer render
+  // landed, or the tab changed) — drop it rather than editing against text it no longer matches.
+  if (Number(message.version) !== tab.version) return;
+  // The editor's live text can be ahead of tab.markdown (the draft-save debounce hasn't
+  // committed it yet, e.g. a click right after typing): pick it up first, so the toggle below
+  // — and the line-number check inside it — run against what's actually on screen, not a
+  // stale snapshot that would either edit the wrong line or silently drop the pending keystrokes.
+  if (mode !== "read" && input.value !== tab.markdown) tab.markdown = input.value;
   const line = Number(message.line);
   if (Number.isInteger(line) && line >= 1) {
-    const updated = toggleTaskLine(tab.markdown, line);
-    if (updated !== null) {
+    const updated = toggleTaskLine(tab.markdown, line, !!message.checked);
+    if (updated !== null && updated !== tab.markdown) {
       tab.markdown = updated;
       if (mode !== "read") input.value = updated;
       scheduleSessionSave();
     }
-    // else: the line no longer looks like a task item (stale line number) — leave the text
-    // alone and just re-render below, which corrects whatever the click optimistically changed.
+    // else: out of range, or the line no longer looks like a task item (stale line number) —
+    // leave the text alone and just re-render below, which corrects whatever the click
+    // optimistically changed in the DOM.
   }
   renderTab(tab, tab.markdown);
 }
