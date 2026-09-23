@@ -1,42 +1,44 @@
 using System.IO;
 using MdReader.Core.Diagnostics;
+using MdReader.Core.Documents;
 using MdReader.Core.Hosting;
 using MdReader.Core.Paths;
 using MdReader.Core.Protocol;
-using MdReader.Core.Settings;
 using MdReader.Core.Theming;
-using MdReader.Edge;
 using MdReader.Shell.Documents;
 using MdReader.Shell.Services;
 using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.Wpf;
 
-namespace MdReader.App.Documents;
+namespace MdReader.Edge;
 
-/// <summary>Why a tab can't show its page at all (shown as a WPF error in place of the WebView).</summary>
-internal sealed class WebViewHostFailedEventArgs(DocumentErrorKind kind, string detail, bool requiresNewWebView) : EventArgs
+/// <summary>Why a tab can't show its page at all (the shell shows its own error in place of the web view).</summary>
+public sealed class WebViewHostFailedEventArgs(DocumentErrorKind kind, string detail, bool requiresNewWebView) : EventArgs
 {
     public DocumentErrorKind Kind { get; } = kind;
+
     public string Detail { get; } = detail;
 
-    /// The CoreWebView2 is closed (browser process gone): re-navigating can't help, only a new WebView2 control.
+    /// The CoreWebView2 is closed (browser process gone): re-navigating can't help, only a new web view.
     public bool RequiresNewWebView { get; } = requiresNewWebView;
 }
 
 /// <summary>
-/// <see cref="IWebViewChannel"/> for one WPF <see cref="WebView2"/>: initialization, virtual host mappings, hardening,
+/// <see cref="IWebViewChannel"/> for one WebView2 view: initialization, virtual host mappings, hardening,
 /// origin-checked message intake, posting, and render-process crash recovery (ARCHITECTURE §4.10, §6, §7.1, §8.4).
 /// All members are UI-thread only.
 /// </summary>
-internal sealed class WebViewBridge : IWebViewChannel, IDisposable
+/// <remarks>
+/// The shell supplies the view itself through <see cref="IWebView2Surface"/> — a WPF <c>WebView2</c> control or a
+/// <c>CoreWebView2Controller</c> in an Avalonia native host — and everything below this line is the same for both.
+/// </remarks>
+public sealed class WebView2Channel : IWebViewChannel, IDisposable
 {
     private const string Category = "WebViewBridge";
     private const int MaxRenderProcessFailures = 3;
     private static readonly TimeSpan RenderProcessFailureWindow = TimeSpan.FromSeconds(60);
 
-    private readonly WebView2 _webView;
+    private readonly IWebView2Surface _surface;
     private readonly IThemeService _theme;
-    private readonly SettingsCoordinator _settings;
     private readonly AppPaths _paths;
     private readonly IPerfRecorder _perf;
     private readonly IAppLog _log;
@@ -51,17 +53,18 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
     private bool _webViewDead;               // browser process exited: this CoreWebView2 is Closed for good
     private bool _disposed;
 
-    public WebViewBridge(WebView2 webView, IThemeService theme, SettingsCoordinator settings, AppPaths paths, IPerfRecorder perf, IAppLog log, TimeProvider time)
+    public WebView2Channel(IWebView2Surface surface, IThemeService theme, AppPaths paths, IPerfRecorder perf, IAppLog log,
+                           TimeProvider time)
     {
-        _webView = webView;
+        ArgumentNullException.ThrowIfNull(surface);
+        _surface = surface;
         _theme = theme;
-        _settings = settings;
         _paths = paths;
         _perf = perf;
         _log = log;
         _time = time;
         _operations = new CoreWebView2Operations(() => _disposed ? null : _core, log);
-        _webView.ZoomFactorChanged += OnZoomFactorChanged;
+        _surface.ZoomFactorChanged += OnZoomFactorChanged;
     }
 
     public bool IsReady { get; private set; }
@@ -73,8 +76,8 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
     public event EventHandler<IReadOnlyList<string>>? FilesDropped;
 
     /// Raised when the page can't be shown (protocol mismatch, viewer page failed to load, repeated renderer crashes,
-    /// browser process gone). The view replaces the WebView with a WPF error.
-    internal event EventHandler<WebViewHostFailedEventArgs>? HostFailed;
+    /// browser process gone). The view replaces the web view with its own error.
+    public event EventHandler<WebViewHostFailedEventArgs>? HostFailed;
 
     /// True when local images can't be served because the resource root couldn't be mapped (path too long, etc.).
     public bool LocalResourcesUnavailable { get; private set; }
@@ -88,14 +91,12 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
             throw new InvalidOperationException("The WebView is already initialized.");
         }
 
-        await _webView.EnsureCoreWebView2Async(environment);
+        CoreWebView2 core = await _surface.EnsureCoreWebView2Async(environment);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        CoreWebView2 core = _webView.CoreWebView2 ?? throw new InvalidOperationException("CoreWebView2 wasn't created.");
         _core = core;
         _perf.Mark(PerfMarks.WebViewReady);
 
         WebViewSecurity.Apply(core, _theme.EffectiveTheme, _log, OnLinkNavigation);
-        _webView.AllowExternalDrop = true;   // lives on the WPF control, not on CoreWebView2
 
         // The app host must map, or nothing can be shown: let that exception reach the view.
         core.SetVirtualHostNameToFolderMapping(ProtocolConstants.AppHost, _paths.WebRoot, CoreWebView2HostResourceAccessKind.Deny);
@@ -120,7 +121,7 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
         CoreWebView2? core = _core;
         if (!IsReady || core is null)
         {
-            _log.Write(AppLogLevel.Debug, Category, $"Dropped a message because the page isn't ready: {Describe(json)}.");
+            _log.Write(AppLogLevel.Debug, Category, $"Dropped a message because the page isn't ready: {WebViewSecurity.Describe(json)}.");
             return;
         }
 
@@ -130,7 +131,7 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
         }
         catch (Exception ex)
         {
-            _log.Write(AppLogLevel.Warning, Category, $"PostWebMessageAsJson failed: {Describe(json)}.", ex);
+            _log.Write(AppLogLevel.Warning, Category, $"PostWebMessageAsJson failed: {WebViewSecurity.Describe(json)}.", ex);
         }
     }
 
@@ -150,18 +151,17 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
 
     public Task CapturePreviewAsync(Stream pngDestination) => _operations.CapturePreviewAsync(pngDestination);
 
-    public double Zoom => _webView.ZoomFactor;
+    public double Zoom => _surface.ZoomFactor;
 
-    public void SetZoom(double zoomFactor) => _webView.ZoomFactor = zoomFactor;
+    public void SetZoom(double zoomFactor) => _surface.ZoomFactor = zoomFactor;
 
     public event EventHandler? ZoomChanged;
 
-    /// Works before the controller exists: the WPF control carries the value over to it.
     public void SetBackgroundColor(byte red, byte green, byte blue)
     {
         try
         {
-            _webView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, red, green, blue);
+            _surface.SetDefaultBackgroundColor(red, green, blue);
         }
         catch (Exception ex)
         {
@@ -188,11 +188,11 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
     }
 
     /// True when <see cref="Restart"/> can recover (the CoreWebView2 exists and is alive). Otherwise the view has to
-    /// replace the WebView2 control and this bridge.
-    internal bool CanRestart => !_disposed && _core is not null && !_webViewDead;
+    /// replace the web view and this channel.
+    public bool CanRestart => !_disposed && _core is not null && !_webViewDead;
 
-    /// Clears the crash history and reloads the page (WPF error "Try again").
-    internal void Restart()
+    /// Clears the crash history and reloads the page (the shell error's "Try again").
+    public void Restart()
     {
         if (!CanRestart)
         {
@@ -214,7 +214,7 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
         _disposed = true;
         IsReady = false;
         _operations.Dispose();
-        _webView.ZoomFactorChanged -= OnZoomFactorChanged;
+        _surface.ZoomFactorChanged -= OnZoomFactorChanged;
         CoreWebView2? core = _core;
         _core = null;
         if (core is null)
@@ -346,7 +346,8 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
             string json = e.WebMessageAsJson;
             if (!ProtocolSerializer.TryDeserialize(json, out WebMessage? message, out string? error))
             {
-                _log.Write(AppLogLevel.Warning, Category, $"Dropped an invalid web message ({WebViewSecurity.ForLog(error, 300)}): {Describe(json)}.");
+                _log.Write(AppLogLevel.Warning, Category,
+                    $"Dropped an invalid web message ({WebViewSecurity.ForLog(error, 300)}): {WebViewSecurity.Describe(json)}.");
                 return;
             }
 
@@ -443,7 +444,7 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
                 case CoreWebView2ProcessFailedKind.BrowserProcessExited:
                     IsReady = false;
                     _log.Write(AppLogLevel.Error, Category, $"The WebView2 browser process exited ({e.Reason}, exit code {e.ExitCode}).");
-                    // The WebView is now Closed for good; the view recreates the control on "Try again".
+                    // The WebView is now Closed for good; the view recreates it on "Try again".
                     Fail(DocumentErrorKind.RenderFailed, "The WebView2 browser process exited.", requiresNewWebView: true);
                     break;
 
@@ -486,19 +487,5 @@ internal sealed class WebViewBridge : IWebViewChannel, IDisposable
         _webViewDead |= requiresNewWebView;
         IsReady = false;
         HostFailed?.Invoke(this, new WebViewHostFailedEventArgs(kind, detail, requiresNewWebView));
-    }
-
-    /// Web message JSON for a log line: escaped and capped (the page's text is untrusted).
-    private static string Describe(string? json)
-    {
-        if (json is null)
-        {
-            return "(null)";
-        }
-
-        const int Max = 120;
-        return json.Length <= Max
-            ? WebViewSecurity.ForLog(json, Max)
-            : $"{WebViewSecurity.ForLog(json[..Max], Max)}… ({json.Length} chars)";
     }
 }

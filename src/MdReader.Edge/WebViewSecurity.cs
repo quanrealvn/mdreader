@@ -159,6 +159,20 @@ public static class WebViewSecurity
     /// Makes untrusted text safe for ONE log line.
     public static string ForLog(string? value, int maxChars = 2000) => LogText.ForLog(value, maxChars);
 
+    /// Web message JSON for a log line: escaped and capped, because the page's text is untrusted.
+    public static string Describe(string? json)
+    {
+        if (json is null)
+        {
+            return "(null)";
+        }
+
+        const int Max = 120;
+        return json.Length <= Max
+            ? ForLog(json, Max)
+            : $"{ForLog(json[..Max], Max)}… ({json.Length} chars)";
+    }
+
     private static void OnNavigationStarting(CoreWebView2NavigationStartingEventArgs e, IAppLog log, Action<Uri, bool> routeLink)
     {
         try

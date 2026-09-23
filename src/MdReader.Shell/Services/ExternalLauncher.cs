@@ -2,9 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using MdReader.Core.Cli;
 using MdReader.Core.Diagnostics;
-using MdReader.Shell.Services;
 
-namespace MdReader.App.Services;
+namespace MdReader.Shell.Services;
 
 /// Opens http(s) links in the user's default browser. Every URI is re-validated here, independent of LinkClassifier.
 public sealed class ExternalLauncher : IExternalLauncher

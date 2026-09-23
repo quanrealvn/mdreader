@@ -69,6 +69,7 @@ public static class ShellServices
         // Shared shell services
         services.AddSingleton<ThemeService>();
         services.AddSingleton<IThemeService>(sp => sp.GetRequiredService<ThemeService>());
+        services.AddSingleton<IExternalLauncher, ExternalLauncher>();
         services.AddSingleton<IDocumentOpener, DocumentOpener>();
         services.AddSingleton(sp => new Lazy<IDocumentOpener>(sp.GetRequiredService<IDocumentOpener>));
         services.AddSingleton<UiStallMonitor>();

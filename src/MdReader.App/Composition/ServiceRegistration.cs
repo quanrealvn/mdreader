@@ -38,7 +38,6 @@ public static class ServiceRegistration
         services.AddSingleton<IAppHost>(new WpfAppHost(options));
         services.AddSingleton<ISystemThemeProbe, WindowsThemeProbe>();
         services.AddSingleton<WpfThemeWindows>();
-        services.AddSingleton<IExternalLauncher, ExternalLauncher>();
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
         services.AddSingleton<WindowActivator>();

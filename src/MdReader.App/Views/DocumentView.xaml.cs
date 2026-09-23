@@ -19,7 +19,7 @@ using Microsoft.Web.WebView2.Wpf;
 namespace MdReader.App.Views;
 
 /// <summary>
-/// View of one document tab (ARCHITECTURE §4.10–§4.12). Owns the tab's WebView2 and its <see cref="WebViewBridge"/>, the
+/// View of one document tab (ARCHITECTURE §4.10–§4.12). Owns the tab's WebView2 and its <see cref="WebView2Channel"/>, the
 /// find bar, zoom and theme plumbing, and the automation surface (<c>DocumentView</c>: Name = full path, ItemStatus =
 /// loading / rendered:&lt;version&gt; / error:&lt;kind&gt;).
 /// </summary>
@@ -38,7 +38,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
     private bool _splitView;
     private bool _suppressEditorChange;
     private WebView2? _webView;
-    private WebViewBridge? _bridge;
+    private WebView2Channel? _bridge;
     private Window? _window;
     private bool _initStarted;
     private bool _initializing;
@@ -252,7 +252,8 @@ public partial class DocumentView : UserControl, IDocumentTabView
         var webView = new WebView2();
         AutomationProperties.SetAutomationId(webView, "WebView");
 
-        var bridge = new WebViewBridge(webView, services.Theme, services.Settings, services.Paths, services.Perf, services.Log, services.Time);
+        var bridge = new WebView2Channel(new WpfWebViewSurface(webView), services.Theme, services.Paths, services.Perf, services.Log,
+                                         services.Time);
 
         // Before the controller exists, so the first frame already has the page background (no white flash).
         ApplyPageBackground(bridge, services.Theme.EffectiveTheme);
@@ -332,7 +333,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
         _initializing = true;
         DocumentTabViewModel tab = _tab;
         DocumentViewServices services = tab.ViewServices;
-        WebViewBridge bridge = _bridge;
+        WebView2Channel bridge = _bridge;
         try
         {
             // The shared layer only knows IWebViewEnvironmentProvider; the WebView2 environment itself comes from the
@@ -536,7 +537,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
     }
 
     /// The colour the WebView paints before the page has drawn anything (§10).
-    private static void ApplyPageBackground(WebViewBridge bridge, AppTheme theme)
+    private static void ApplyPageBackground(WebView2Channel bridge, AppTheme theme)
     {
         (byte r, byte g, byte b) = ThemePalette.PageBackground(theme);
         bridge.SetBackgroundColor(r, g, b);
@@ -572,7 +573,7 @@ public partial class DocumentView : UserControl, IDocumentTabView
     /// Ctrl+wheel inside the page (IsZoomControlEnabled) → persist the global zoom.
     private void OnZoomFactorChanged(object? sender, EventArgs e)
     {
-        if (_disposed || _tab is null || sender is not WebViewBridge bridge || !ReferenceEquals(bridge, _bridge))
+        if (_disposed || _tab is null || sender is not WebView2Channel bridge || !ReferenceEquals(bridge, _bridge))
         {
             return;
         }

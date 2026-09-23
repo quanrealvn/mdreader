@@ -13,6 +13,8 @@ using MdReader.Core.Diagnostics;
 using MdReader.Core.Hosting;
 using MdReader.Core.Settings;
 using MdReader.Core.SingleInstance;
+using MdReader.Shell.Hosting;
+using MdReader.Shell.Threading;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace MdReader.App;
@@ -29,7 +31,6 @@ public static class Program
 
     private const string Category = "Startup";
     private const string TestModeEnvironmentVariable = "MDREADER_TEST_MODE";
-    private static readonly TimeSpan ForwardTimeout = TimeSpan.FromSeconds(3);
 
     [STAThread]
     static int Main(string[] args)
@@ -88,42 +89,9 @@ public static class Program
 
     /// Returns the channel when this process is the primary instance; null when it forwarded (forwarded = true) or has to
     /// run standalone because forwarding failed.
-    private static ISingleInstanceChannel? AcquireSingleInstance(CommandLineOptions options, IAppLog log, out bool forwarded)
-    {
-        forwarded = false;
-        var identity = new SingleInstanceIdentity(GetUserSid(), GetSessionId(), options.InstanceId);
-        var channel = new SingleInstanceChannel(identity, log);
-        if (channel.TryBecomePrimary())
-        {
-            return channel;
-        }
-
-        ForwardResult result;
-        try
-        {
-            // Safe to block: no SynchronizationContext exists before the App is created (§5).
-            result = channel.ForwardAsync(new OpenFilesRequest(options.Files, Environment.CurrentDirectory),
-                                          pid => NativeMethods.AllowSetForegroundWindow(pid), ForwardTimeout)
-                            .GetAwaiter().GetResult();
-        }
-        catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException or InvalidOperationException
-                                       or OperationCanceledException)
-        {
-            log.Write(AppLogLevel.Warning, Category, "Forwarding to the running instance failed", ex);
-            result = ForwardResult.NoServer;
-        }
-
-        channel.Dispose();
-        if (result == ForwardResult.Forwarded)
-        {
-            log.Write(AppLogLevel.Info, Category, $"Forwarded {options.Files.Count} file(s) to the running instance");
-            forwarded = true;
-            return null;
-        }
-
-        log.Write(AppLogLevel.Warning, Category, $"Couldn't forward to the running instance ({result}); running standalone");
-        return null;
-    }
+    private static ISingleInstanceChannel? AcquireSingleInstance(CommandLineOptions options, IAppLog log, out bool forwarded) =>
+        SingleInstanceGate.Acquire(options, new SingleInstanceIdentity(GetUserSid(), GetSessionId(), options.InstanceId),
+                                   pid => NativeMethods.AllowSetForegroundWindow(pid), log, out forwarded);
 
     private static int RunApplication(CommandLineOptions options, AppPaths paths, ISingleInstanceChannel? channel, IAppLog log)
     {
@@ -168,13 +136,13 @@ public static class Program
             }
             else
             {
-                OpenFiles(services.GetRequiredService<IDocumentOpener>(), options.Files);
+                SingleInstanceGate.OpenFiles(services.GetRequiredService<IDocumentOpener>(), options.Files);
             }
 
             // One orderly teardown for every way out (window closed, Application.Shutdown, logoff/shutdown, Restart Manager):
             // it runs while the window and the browser processes still exist (§4.11).
-            var shutdown = new OrderlyShutdown(window, services.GetRequiredService<WindowPlacementService>(),
-                                               services.GetRequiredService<SettingsCoordinator>(),
+            var placement = services.GetRequiredService<WindowPlacementService>();
+            var shutdown = new OrderlyShutdown(() => placement.Save(window), services.GetRequiredService<SettingsCoordinator>(),
                                                services.GetRequiredService<MainViewModel>(), session, log);
             var mainViewModel = services.GetRequiredService<MainViewModel>();
             window.Closing += (_, e) =>
@@ -208,8 +176,10 @@ public static class Program
 
             if (channel is not null)
             {
-                shutdown.StopForwarding = ServeForwardedFiles(app, window, channel, services.GetRequiredService<IDocumentOpener>(),
-                                                              services.GetRequiredService<WindowActivator>(), options, log);
+                var activator = services.GetRequiredService<WindowActivator>();
+                shutdown.StopForwarding = SingleInstanceGate.Serve(channel, options, services.GetRequiredService<IUiDispatcher>(),
+                                                                   services.GetRequiredService<IDocumentOpener>(),
+                                                                   () => activator.Activate(window), log);
             }
 
             if (perf.IsEnabled)
@@ -231,187 +201,6 @@ public static class Program
 
         log.Write(AppLogLevel.Info, Category, $"Exit code {exitCode}");
         return exitCode;
-    }
-
-    /// Primary instance: accept files forwarded by later launches (§4.11) until the returned stop action runs (the first step
-    /// of the orderly shutdown). No forwarded file is ever lost:
-    /// - after the stop, the server is gone (late secondaries get NoServer) and a request racing with it is rejected before
-    ///   its ACK (the secondary gets Rejected); either way the secondary opens its files itself;
-    /// - a request already acknowledged but not yet opened (its dispatcher callback hadn't run, or never will because the
-    ///   dispatcher is shutting down) is taken over by the stop action, which relaunches MdReader with those files once the
-    ///   pipe and mutex are released, so the new process becomes the primary instance.
-    private static Action ServeForwardedFiles(App app, MainWindow window, ISingleInstanceChannel channel, IDocumentOpener opener,
-                                              WindowActivator activator, CommandLineOptions options, IAppLog log)
-    {
-        var gate = new Lock();
-        var closing = false;                              // guarded by gate
-        var pending = new List<OpenFilesRequest>();       // acknowledged, not yet opened; guarded by gate
-
-        channel.FilesReceived += (_, request) =>
-        {
-            // Pipe server thread, before the ACK: throwing makes the channel reject the request (the sender opens standalone).
-            lock (gate)
-            {
-                if (closing)
-                {
-                    log.Write(AppLogLevel.Info, Category, $"Refusing {request.Files.Count} forwarded file(s): MdReader is closing");
-                    throw new InvalidOperationException("MdReader is closing; the request is refused so the sender opens the files itself.");
-                }
-
-                pending.Add(request);
-            }
-
-            app.Dispatcher.InvokeAsync(() =>
-            {
-                bool relaunch;
-                lock (gate)
-                {
-                    if (!pending.Remove(request))
-                    {
-                        return;   // already taken over by the stop action
-                    }
-
-                    relaunch = closing;
-                }
-
-                if (relaunch)
-                {
-                    RelaunchWithFiles(options, request.Files, log);
-                    return;
-                }
-
-                log.Write(AppLogLevel.Info, Category, $"Received {request.Files.Count} file(s) from another instance");
-                OpenFiles(opener, request.Files);
-                activator.Activate(window);
-            });
-        };
-
-        channel.StartServer();
-        return () =>
-        {
-            OpenFilesRequest[] orphaned;
-            lock (gate)
-            {
-                closing = true;
-                orphaned = [.. pending];
-                pending.Clear();
-            }
-
-            channel.Dispose();   // stops the accept loop and releases the pipe name and mutex; Program disposes again (no-op)
-            foreach (var request in orphaned)
-            {
-                RelaunchWithFiles(options, request.Files, log);
-            }
-        };
-    }
-
-    /// Opens forwarded files that arrived while this instance was shutting down in a new MdReader process. It keeps the
-    /// isolation options (--profile-dir, --instance-id, --theme; never --capture/--perf-log) so tests stay isolated; it finds
-    /// no running server and becomes the primary instance (or runs standalone).
-    private static void RelaunchWithFiles(CommandLineOptions options, IReadOnlyList<string> files, IAppLog log)
-    {
-        if (files.Count == 0)
-        {
-            return;   // an "activate only" request: nothing to hand over
-        }
-
-        try
-        {
-            var executable = Environment.ProcessPath ?? throw new InvalidOperationException("The MdReader executable path is unknown.");
-            var start = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = Environment.CurrentDirectory };
-            if (options.ProfileDirectory is { } profile)
-            {
-                start.ArgumentList.Add("--profile-dir");
-                start.ArgumentList.Add(profile);
-            }
-
-            if (!string.Equals(options.InstanceId, CommandLineOptions.DefaultInstanceId, StringComparison.Ordinal))
-            {
-                start.ArgumentList.Add("--instance-id");
-                start.ArgumentList.Add(options.InstanceId);
-            }
-
-            if (options.ThemeOverride is { } theme)
-            {
-                start.ArgumentList.Add("--theme");
-                start.ArgumentList.Add(theme.ToString().ToLowerInvariant());
-            }
-
-            start.ArgumentList.Add("--");
-            foreach (var file in files)
-            {
-                start.ArgumentList.Add(file);
-            }
-
-            using var process = Process.Start(start);
-            log.Write(AppLogLevel.Info, Category,
-                $"MdReader is closing: relaunched {files.Count} forwarded file(s) in a new process (pid {process?.Id})");
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
-        {
-            log.Write(AppLogLevel.Error, Category, $"Couldn't relaunch MdReader for {files.Count} forwarded file(s)", ex);
-        }
-    }
-
-    /// Shutdown sequence (§4.11), run once, on the UI thread, before WPF destroys the main window: save unsaved editor text
-    /// when the Windows session is ending → stop serving forwarded files → record the window placement → freeze the tab
-    /// session (so closing the tabs below doesn't empty it) → save the
-    /// settings → close every tab (find → session → WebView). Tearing the
-    /// WebViews down here matters on logoff/shutdown and Restart Manager requests: once the session is ending the WebView2
-    /// controllers become unusable, and WPF's own window teardown would otherwise still call into them
-    /// (CoreWebView2Controller.set_IsVisible → access violation, settings never saved).
-    private sealed class OrderlyShutdown(Window window, WindowPlacementService placement, SettingsCoordinator settings,
-                                         MainViewModel tabs, SessionService? session, IAppLog log)
-    {
-        private bool _done;
-
-        public Action? StopForwarding { get; set; }
-
-        /// <param name="saveUnsavedTabs">
-        /// The Windows session is ending: nothing can be asked and the process may be killed in seconds, so unsaved
-        /// editor text is written to disk before the tabs close. The normal window close asks first instead (§4.10).
-        /// </param>
-        public void Run(string reason, bool saveUnsavedTabs = false)
-        {
-            if (_done)
-            {
-                return;
-            }
-
-            _done = true;
-            log.Write(AppLogLevel.Info, Category, $"Shutting down: {reason}");
-            if (saveUnsavedTabs)
-            {
-                Step("save the unsaved tabs", tabs.SaveDirtyTabsForSessionEnd);
-            }
-
-            Step("stop the pipe server", () => StopForwarding?.Invoke());
-            Step("record the window placement", () => placement.Save(window));
-            Step("record the open tabs", () => session?.Freeze());
-            Step("save the settings", settings.Flush);
-            Step("close the tabs", tabs.CloseAllTabs);
-        }
-
-        private void Step(string what, Action action)
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception ex)
-            {
-                log.Write(AppLogLevel.Error, Category, $"Couldn't {what} during shutdown", ex);
-            }
-        }
-    }
-
-    /// CLI and pipe: open every file, activate the first (§4.11).
-    private static void OpenFiles(IDocumentOpener opener, IReadOnlyList<string> files)
-    {
-        for (var i = 0; i < files.Count; i++)
-        {
-            opener.Open(files[i], fragment: null, activate: i == 0);
-        }
     }
 
     private static void Shutdown(ServiceProvider? services, IAppLog log)
