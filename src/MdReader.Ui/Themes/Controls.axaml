@@ -9,7 +9,9 @@
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+                    xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
+                    xmlns:views="clr-namespace:MdReader.Ui.Views">
 
   <!-- ===== Typography ===== -->
   <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI</FontFamily>
@@ -248,6 +250,12 @@
     rounded hover pill.
   -->
   <ControlTheme x:Key="TabItem" TargetType="ListBoxItem">
+    <!-- The UI tests' handle on a tab (§4.12): the file name, the full path, and "unsaved" while the editor is dirty. -->
+    <Setter Property="automation:AutomationProperties.AutomationId" Value="Tab" />
+    <Setter Property="automation:AutomationProperties.Name" Value="{Binding Header}" />
+    <Setter Property="automation:AutomationProperties.HelpText" Value="{Binding ToolTip}" />
+    <Setter Property="automation:AutomationProperties.ItemStatus"
+            Value="{Binding IsDirty, Converter={x:Static views:AutomationValues.UnsavedItemStatus}}" />
     <Setter Property="MinWidth" Value="120" />
     <Setter Property="MaxWidth" Value="240" />
     <Setter Property="Height" Value="32" />
@@ -270,12 +278,17 @@
                        Foreground="{TemplateBinding Foreground}" />
             <TextBlock Name="DirtyGlyph" Grid.Column="2" FontSize="16" Text="&#x25CF;" Margin="6,0,0,0" VerticalAlignment="Center"
                        Foreground="{DynamicResource Brush.Accent}" IsVisible="{Binding IsDirty}"
-                       ToolTip.Tip="Unsaved changes" />
+                       ToolTip.Tip="Unsaved changes"
+                       automation:AutomationProperties.AutomationId="TabDirtyMarker"
+                       automation:AutomationProperties.Name="Unsaved changes" />
             <TextBlock Name="DeletedGlyph" Grid.Column="3" Theme="{StaticResource IconText}" FontSize="12" Text="&#xE7BA;"
                        Margin="6,0,0,0" Foreground="{DynamicResource Brush.Warning}" IsVisible="{Binding IsDeleted}"
-                       ToolTip.Tip="The file was deleted or moved" />
+                       ToolTip.Tip="The file was deleted or moved"
+                       automation:AutomationProperties.Name="Deleted" />
             <Button Name="CloseButton" Grid.Column="4" Theme="{StaticResource TabCloseButton}" Content="&#xE711;"
-                    Command="{Binding CloseCommand}" ToolTip.Tip="Close tab" />
+                    Command="{Binding CloseCommand}" ToolTip.Tip="Close tab"
+                    automation:AutomationProperties.AutomationId="TabCloseButton"
+                    automation:AutomationProperties.Name="Close tab" />
           </Grid>
         </Grid>
       </ControlTemplate>

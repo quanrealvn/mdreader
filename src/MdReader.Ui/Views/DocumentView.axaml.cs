@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -69,10 +70,12 @@ public partial class DocumentView : UserControl, IDocumentTabView, IFindableView
         _shortcuts = shortcuts;
         DocumentViewServices services = tab.ViewServices;
         AutomationProperties.SetName(this, tab.FilePath);
+        UpdateItemStatus();
 
         _host = DocumentWebViewHostFactory.Create(services);
         _host.AcceleratorKeyPressed += OnAcceleratorKeyPressed;
         _host.WebViewFocused += OnWebViewFocused;
+        AutomationProperties.SetAutomationId(_host.Control, "WebView");
         WebViewHost.Children.Add(_host.Control);
 
         CreateChannel();
@@ -476,7 +479,36 @@ public partial class DocumentView : UserControl, IDocumentTabView, IFindableView
     // ----------------------------------------------------------------------------------------------------------------
     // State, theme, zoom
 
-    private void OnSessionStateChanged(object? sender, EventArgs e) => UpdateEditorEditable();
+    private void OnSessionStateChanged(object? sender, EventArgs e)
+    {
+        UpdateItemStatus();
+        UpdateEditorEditable();
+    }
+
+    /// <summary>
+    /// The document's automation status (§4.12): `loading`, `rendered:<version>` or `error:<kind>`, the same strings
+    /// the WPF shell publishes, so one UI-test suite can drive either shell.
+    /// </summary>
+    private void UpdateItemStatus()
+    {
+        if (_tab is null)
+        {
+            return;
+        }
+
+        DocumentSession session = _tab.Session;
+        string status = session.State switch
+        {
+            DocumentSessionState.Error => "error:" + DocumentSession.ToProtocolName(session.ErrorKind ?? DocumentErrorKind.RenderFailed),
+            _ when session.RenderedVersion > 0 => "rendered:" + session.RenderedVersion.ToString(CultureInfo.InvariantCulture),
+            _ => "loading",
+        };
+
+        if (!string.Equals(AutomationProperties.GetItemStatus(this), status, StringComparison.Ordinal))
+        {
+            AutomationProperties.SetItemStatus(this, status);
+        }
+    }
 
     /// <summary>
     /// The editor only takes input once the document has actually been read (§4.10). Before that — a first load still

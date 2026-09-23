@@ -49,7 +49,7 @@
         <Border Theme="{StaticResource ToolbarSeparator}" />
 
         <ToggleButton Name="TocToggleButton" Theme="{StaticResource IconToggleButton}" Content="&#xE8FD;"
-                      IsChecked="{Binding IsTocVisible, Mode=TwoWay}" IsEnabled="{Binding HasTabs}"
+                      IsEnabled="{Binding HasTabs}" IsCheckedChanged="OnToggleButtonCheckedChanged"
                       automation:AutomationProperties.AutomationId="TocToggleButton"
                       automation:AutomationProperties.Name="Table of contents"
                       ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[TocToggleButton]}" />
@@ -62,7 +62,7 @@
                 automation:AutomationProperties.AutomationId="ExportPdfButton" automation:AutomationProperties.Name="Export PDF"
                 ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[ExportPdfButton]}" />
         <ToggleButton Name="SplitViewButton" Theme="{StaticResource IconToggleButton}" Content="&#xE745;"
-                      IsChecked="{Binding IsSplitView, Mode=TwoWay}" IsEnabled="{Binding HasTabs}"
+                      IsEnabled="{Binding HasTabs}" IsCheckedChanged="OnToggleButtonCheckedChanged"
                       automation:AutomationProperties.AutomationId="SplitViewButton"
                       automation:AutomationProperties.Name="Split view"
                       ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[SplitViewButton]}" />
@@ -95,41 +95,41 @@
                 ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[MoreButton]}">
           <Button.Flyout>
             <MenuFlyout Placement="BottomEdgeAlignedRight">
-              <MenuItem Header="_Save" Command="{Binding SaveCommand}"
-                        automation:AutomationProperties.AutomationId="SaveMenuItem"
-                        InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[SaveMenuItem]}">
-                <MenuItem.Icon>
+              <views:InvokableMenuItem Header="_Save" Command="{Binding SaveCommand}"
+                                       automation:AutomationProperties.AutomationId="SaveMenuItem"
+                                       InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[SaveMenuItem]}">
+                <views:InvokableMenuItem.Icon>
                   <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE74E;" />
-                </MenuItem.Icon>
-              </MenuItem>
-              <MenuItem Header="_Reload" Command="{Binding ReloadCommand}"
-                        automation:AutomationProperties.AutomationId="ReloadMenuItem"
-                        InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[ReloadMenuItem]}">
-                <MenuItem.Icon>
+                </views:InvokableMenuItem.Icon>
+              </views:InvokableMenuItem>
+              <views:InvokableMenuItem Header="_Reload" Command="{Binding ReloadCommand}"
+                                       automation:AutomationProperties.AutomationId="ReloadMenuItem"
+                                       InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[ReloadMenuItem]}">
+                <views:InvokableMenuItem.Icon>
                   <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE72C;" />
-                </MenuItem.Icon>
-              </MenuItem>
-              <MenuItem Header="_Print…" Command="{Binding PrintCommand}"
-                        automation:AutomationProperties.AutomationId="PrintMenuItem"
-                        InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[PrintMenuItem]}">
-                <MenuItem.Icon>
+                </views:InvokableMenuItem.Icon>
+              </views:InvokableMenuItem>
+              <views:InvokableMenuItem Header="_Print…" Command="{Binding PrintCommand}"
+                                       automation:AutomationProperties.AutomationId="PrintMenuItem"
+                                       InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[PrintMenuItem]}">
+                <views:InvokableMenuItem.Icon>
                   <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE749;" />
-                </MenuItem.Icon>
-              </MenuItem>
-              <MenuItem Header="_Export as PDF…" Command="{Binding ExportPdfCommand}"
-                        automation:AutomationProperties.AutomationId="ExportPdfMenuItem"
-                        InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[ExportPdfMenuItem]}">
-                <MenuItem.Icon>
+                </views:InvokableMenuItem.Icon>
+              </views:InvokableMenuItem>
+              <views:InvokableMenuItem Header="_Export as PDF…" Command="{Binding ExportPdfCommand}"
+                                       automation:AutomationProperties.AutomationId="ExportPdfMenuItem"
+                                       InputGesture="{Binding Source={x:Static ui:MenuGestures.ByAutomationId}, Path=[ExportPdfMenuItem]}">
+                <views:InvokableMenuItem.Icon>
                   <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xEA90;" />
-                </MenuItem.Icon>
-              </MenuItem>
+                </views:InvokableMenuItem.Icon>
+              </views:InvokableMenuItem>
               <Separator />
-              <MenuItem Header="_About MdReader" Click="OnAboutClick"
-                        automation:AutomationProperties.AutomationId="AboutMenuItem">
-                <MenuItem.Icon>
+              <views:InvokableMenuItem Header="_About MdReader" Click="OnAboutClick"
+                                       automation:AutomationProperties.AutomationId="AboutMenuItem">
+                <views:InvokableMenuItem.Icon>
                   <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE946;" />
-                </MenuItem.Icon>
-              </MenuItem>
+                </views:InvokableMenuItem.Icon>
+              </views:InvokableMenuItem>
             </MenuFlyout>
           </Button.Flyout>
         </Button>
@@ -138,7 +138,8 @@
 
     <Panel Name="DocumentArea" Grid.Row="1" Background="{DynamicResource Brush.Document.Background}">
       <views:DocumentHost Name="DocumentHostControl" Tabs="{Binding Tabs}"
-                          automation:AutomationProperties.AutomationId="DocumentHost" />
+                          automation:AutomationProperties.AutomationId="DocumentHost"
+                          automation:AutomationProperties.AccessibilityView="Control" />
       <!-- EmptyState is created on first need (no tabs) by MainWindow.axaml.cs, so a launch that opens documents
            never builds it (startup cost). -->
       <ContentControl Name="EmptyStateHost" Focusable="False" IsVisible="False"

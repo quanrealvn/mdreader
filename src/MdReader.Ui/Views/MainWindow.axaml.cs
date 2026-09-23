@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private readonly AvaloniaThemeWindows _theme;
     private readonly CommandLineOptions _options;
     private readonly MenuFlyout _recentMenu = new() { Placement = PlacementMode.BottomEdgeAlignedRight };
+    private bool _syncingToggleButtons;
 
     public MainWindow(MainViewModel viewModel, AvaloniaShortcutRouter shortcuts, AvaloniaThemeWindows theme,
                       WindowPlacementService placement, CommandLineOptions options)
@@ -36,6 +37,7 @@ public partial class MainWindow : Window
 
         InitializeComponent();
         DataContext = viewModel;
+        SyncToggleButtons();
         DocumentHostControl.Shortcuts = shortcuts;
         TryLoadIcon();
 
@@ -72,7 +74,7 @@ public partial class MainWindow : Window
         var recent = _viewModel.RecentFiles.OfType<RecentFileEntry>().ToList();
         if (recent.Count == 0)
         {
-            items.Add(new MenuItem { Header = "No recent files", IsEnabled = false });
+            items.Add(new InvokableMenuItem { Header = "No recent files", IsEnabled = false });
         }
         else
         {
@@ -82,7 +84,7 @@ public partial class MainWindow : Window
             }
 
             items.Add(new Separator());
-            var clear = new MenuItem { Header = "_Clear recent files", Command = _viewModel.ClearRecentFilesCommand };
+            var clear = new InvokableMenuItem { Header = "_Clear recent files", Command = _viewModel.ClearRecentFilesCommand };
             AutomationProperties.SetAutomationId(clear, "ClearRecentMenuItem");
             items.Add(clear);
         }
@@ -106,7 +108,7 @@ public partial class MainWindow : Window
         header.Children.Add(new TextBlock { Text = entry.FileName, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 440 });
         header.Children.Add(folder);
 
-        var item = new MenuItem
+        var item = new InvokableMenuItem
         {
             Header = header,
             Icon = new TextBlock { Text = "", Theme = this.FindResource("MenuIcon") as ControlTheme },
@@ -154,6 +156,51 @@ public partial class MainWindow : Window
         else if (e.PropertyName is nameof(MainViewModel.HasTabs))
         {
             UpdateEmptyState();
+        }
+        else if (e.PropertyName is nameof(MainViewModel.IsTocVisible) or nameof(MainViewModel.IsSplitView))
+        {
+            SyncToggleButtons();
+        }
+    }
+
+    // ----- Toolbar toggles -----
+
+    /// <summary>
+    /// The TOC and split-view buttons show a view-model value that a press only *asks* to change: below 900 CSS px the
+    /// TOC button opens the page's drawer and snaps back to the persisted docked preference (§4.12), and the editor
+    /// pane stays open while it has unsaved changes (§4.10). A TwoWay binding can't carry that here — once the button
+    /// has written to the source, Avalonia doesn't push an unchanged source value back, and the button would keep
+    /// showing the press instead of the state — so the view model drives both buttons from here.
+    /// </summary>
+    private void SyncToggleButtons()
+    {
+        _syncingToggleButtons = true;
+        try
+        {
+            TocToggleButton.IsChecked = _viewModel.IsTocVisible;
+            SplitViewButton.IsChecked = _viewModel.IsSplitView;
+        }
+        finally
+        {
+            _syncingToggleButtons = false;
+        }
+    }
+
+    /// A press (mouse, keyboard or the UIA Toggle pattern) is a request; the view model decides what it means.
+    private void OnToggleButtonCheckedChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_syncingToggleButtons)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(sender, TocToggleButton))
+        {
+            _viewModel.IsTocVisible = TocToggleButton.IsChecked == true;
+        }
+        else
+        {
+            _viewModel.IsSplitView = SplitViewButton.IsChecked == true;
         }
     }
 
