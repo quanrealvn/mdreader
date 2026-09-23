@@ -4,6 +4,7 @@ using MdReader.Shell.Documents;
 using MdReader.Shell.ViewModels;
 using MdReader.Core.Diagnostics;
 using MdReader.Core.Documents;
+using MdReader.Core.Paths;
 using MdReader.Core.Settings;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -71,19 +72,18 @@ public sealed class DocumentOpener : IDocumentOpener
             return;
         }
 
-        // Path.GetFullPath is lexical only while the path has no '~': with one it calls GetLongPathNameW, which touches
-        // the network for UNC paths (NTLM) — and link targets come from Markdown content. Fully-qualified paths arrive
-        // normalized from their sources (LinkClassifier, the CLI parser, the pipe client, dialogs, drops), so such a
-        // path is used as is; everything else is still normalized for the OrdinalIgnoreCase tab reuse below.
-        string fullPath = Path.IsPathFullyQualified(path) && path.Contains('~', StringComparison.Ordinal)
-            ? path
-            : Path.GetFullPath(path);
+        // A fully qualified path is normalized lexically, through the platform's own rules: Path.GetFullPath would
+        // expand 8.3 short names for any path containing '~', which reaches the network for a UNC path (NTLM) — and
+        // link targets come from Markdown content. Anything else is relative to the process, which only Path.GetFullPath
+        // can resolve, and is normalized there for the tab reuse below.
+        PathPolicy policy = PathPolicy.Current;
+        string fullPath = policy.NormalizeFullPath(path) ?? Path.GetFullPath(path);
         string? scrollTo = string.IsNullOrEmpty(fragment) ? null : fragment;
         ITabHost host = TabHost;
 
         foreach (IDocumentTab existing in host.Tabs)
         {
-            if (string.Equals(existing.FilePath, fullPath, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(existing.FilePath, fullPath, policy.Comparison))
             {
                 if (activate)
                 {

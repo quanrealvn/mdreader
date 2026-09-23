@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using MdReader.Core.Diagnostics;
+using MdReader.Core.Paths;
 using MdReader.Core.Threading;
 
 namespace MdReader.Core.Documents;
@@ -510,7 +511,9 @@ internal sealed class DocumentWatcher : IDocumentWatcher
         }
     }
 
-    private bool IsTarget(string? name) => string.Equals(name, _fileName, StringComparison.OrdinalIgnoreCase);
+    // File names are matched the way the platform matches them: ignoring case on Windows and macOS, exactly on
+    // Linux, where two names differing only in case are two different files and only one of them is ours.
+    private bool IsTarget(string? name) => string.Equals(name, _fileName, PathPolicy.Current.Comparison);
 
-    private bool IsParentFolder(string? name) => string.Equals(name, _parentFolderName, StringComparison.OrdinalIgnoreCase);
+    private bool IsParentFolder(string? name) => string.Equals(name, _parentFolderName, PathPolicy.Current.Comparison);
 }

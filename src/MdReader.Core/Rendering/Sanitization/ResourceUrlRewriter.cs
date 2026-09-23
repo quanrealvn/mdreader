@@ -15,11 +15,13 @@ internal sealed class ResourceUrlRewriter
     private const string ReservedDomain = "mdreader.example";
 
     private readonly IFileSystemProbe _fileSystem;
+    private readonly PathPolicy _policy;
 
-    public ResourceUrlRewriter(IFileSystemProbe fileSystem)
+    public ResourceUrlRewriter(IFileSystemProbe fileSystem, PathPolicy? policy = null)
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
         _fileSystem = fileSystem;
+        _policy = policy ?? PathPolicy.Current;
     }
 
     /// img src / srcset candidate / source srcset candidate → URL to emit, or null to drop.
@@ -38,7 +40,7 @@ internal sealed class ResourceUrlRewriter
             return url;
         }
 
-        var reference = ReferenceParser.Parse(url);
+        var reference = ReferenceParser.Parse(url, _policy);
         switch (reference.Kind)
         {
             case ReferenceKind.Https or ReferenceKind.Http when reference.AbsoluteUri is { } uri && IsReservedHost(uri):
@@ -118,7 +120,7 @@ internal sealed class ResourceUrlRewriter
     /// </summary>
     private string? RewriteDocHostUrl(Uri uri, RenderContext context)
     {
-        var path = ReferenceParser.Parse(uri.AbsolutePath);
+        var path = ReferenceParser.Parse(uri.AbsolutePath, _policy);
         return path.Kind == ReferenceKind.RootRelative ? RewriteLocal(path, context) : null;
     }
 
@@ -209,17 +211,20 @@ internal sealed class ResourceUrlRewriter
             return null;                                        // defense in depth: callers already checked
         }
 
-        // Lexical only, and only through LocalPathResolver (it hides '~' from Path.GetFullPath's 8.3 expansion, which
-        // would otherwise touch the network for UNC paths). No I/O happens before the IsWithin check below.
-        var fullPath = LocalPathResolver.Resolve(reference, context.DocumentDirectory, context.ResourceRoot);
+        // Lexical only, and only through LocalPathResolver: nothing here calls Path.GetFullPath on author content,
+        // whose 8.3 expansion would touch the network for UNC paths. No I/O before the IsWithin check below.
+        // The document's folder comes from the policy rather than RenderContext.DocumentDirectory, which asks
+        // System.IO.Path and so would answer for the host OS instead of the document's.
+        var documentDirectory = _policy.GetDirectoryName(_policy.NormalizeFullPath(context.DocumentPath));
+        var fullPath = LocalPathResolver.Resolve(reference, documentDirectory ?? string.Empty, context.ResourceRoot, _policy);
         if (fullPath is null
-            || LocalPathResolver.IsForbiddenPath(fullPath)
-            || !LocalPathResolver.IsWithin(fullPath, context.ResourceRoot))
+            || _policy.IsForbiddenPath(fullPath)
+            || !_policy.IsWithin(fullPath, context.ResourceRoot))
         {
             return null;
         }
 
-        var url = LocalPathResolver.ToDocHostUrl(fullPath, context.ResourceRoot);
+        var url = LocalPathResolver.ToDocHostUrl(fullPath, context.ResourceRoot, _policy);
 
         // The probe is called only for paths inside the resource root. The version query busts Blink's memory cache
         // after the file changed; unchanged images keep identical URLs. The author's query/fragment is dropped.

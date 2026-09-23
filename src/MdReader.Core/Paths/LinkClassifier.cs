@@ -16,11 +16,13 @@ public sealed class LinkClassifier
     private static readonly LinkTarget.Blocked NotMarkdown = new(NotMarkdownReason);
 
     private readonly IFileSystemProbe _fileSystem;
+    private readonly PathPolicy _policy;
 
-    public LinkClassifier(IFileSystemProbe fileSystem)
+    public LinkClassifier(IFileSystemProbe fileSystem, PathPolicy? policy = null)
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
         _fileSystem = fileSystem;
+        _policy = policy ?? PathPolicy.Current;
     }
 
     /// rawHref = the author's attribute value as sent by links.js. resourceRoot null → document folder.
@@ -28,7 +30,7 @@ public sealed class LinkClassifier
     {
         ArgumentNullException.ThrowIfNull(documentPath);
 
-        var reference = ReferenceParser.Parse(rawHref);
+        var reference = ReferenceParser.Parse(rawHref, _policy);
         return reference.Kind switch
         {
             ReferenceKind.Fragment => new LinkTarget.Anchor(reference.Fragment ?? string.Empty),
@@ -65,7 +67,7 @@ public sealed class LinkClassifier
 
     private LinkTarget ClassifyLocal(ParsedReference reference, string documentPath, string? resourceRoot)
     {
-        var document = LocalPathResolver.NormalizeFullPath(documentPath);
+        var document = _policy.NormalizeFullPath(documentPath);
         if (document is null)
         {
             return Unsupported;
@@ -77,24 +79,25 @@ public sealed class LinkClassifier
             return new LinkTarget.Anchor(reference.Fragment ?? string.Empty);
         }
 
-        var documentDirectory = Path.GetDirectoryName(document) ?? document;
-        var root = resourceRoot is null ? documentDirectory : LocalPathResolver.NormalizeFullPath(resourceRoot) ?? documentDirectory;
+        var documentDirectory = _policy.GetDirectoryName(document) ?? document;
+        var root = resourceRoot is null ? documentDirectory : _policy.NormalizeFullPath(resourceRoot) ?? documentDirectory;
 
         // Lexical only: null for forbidden or malformed paths.
-        var target = LocalPathResolver.Resolve(reference, documentDirectory, root);
+        var target = LocalPathResolver.Resolve(reference, documentDirectory, root, _policy);
         if (target is null)
         {
             return Unsupported;
         }
 
-        // UNC / NTLM rule, checked lexically before any probe: a UNC target (from "\\srv\x", "//srv/x", a UNC file:
-        // URI, or anything else that resolved to one) is allowed only on the document's own \\server\share.
-        if (LocalPathResolver.IsUncPath(target) && !LocalPathResolver.IsSameUncShare(target, document))
+        // Network / NTLM rule, checked lexically before any probe: a target that could reach another machine (from
+        // "\\srv\x", "//srv/x", a UNC file: URI, macOS's /net/<host>, or anything else that resolved to one) is
+        // allowed only on the host and share the document itself lives on.
+        if (_policy.IsNetworkPath(target) && !_policy.IsSameNetworkRoot(target, document))
         {
             return Unsupported;
         }
 
-        if (LocalPathResolver.PathEquals(target, document))
+        if (_policy.PathEquals(target, document))
         {
             return new LinkTarget.Anchor(reference.Fragment ?? string.Empty);
         }
@@ -109,10 +112,10 @@ public sealed class LinkClassifier
         {
             foreach (var indexName in MarkdownFileTypes.DirectoryIndexNames)
             {
-                var index = Path.Join(target, indexName);
+                var index = _policy.Join(target, indexName);
                 if (_fileSystem.FileExists(index))
                 {
-                    return LocalPathResolver.PathEquals(index, document)
+                    return _policy.PathEquals(index, document)
                         ? new LinkTarget.Anchor(reference.Fragment ?? string.Empty)
                         : new LinkTarget.MarkdownDocument(index, reference.Fragment);
                 }

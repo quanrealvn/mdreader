@@ -12,13 +12,20 @@ namespace MdReader.Core.Paths;
 /// <para><see cref="ParsedReference.DecodedPath"/> is the percent-decoded path (without query and fragment).
 /// For local kinds (<see cref="ReferenceKind.Relative"/>, <see cref="ReferenceKind.RootRelative"/>,
 /// <see cref="ReferenceKind.WindowsAbsolute"/>, <see cref="ReferenceKind.File"/>, <see cref="ReferenceKind.Unc"/>)
-/// '/' is converted to '\'; for <see cref="ReferenceKind.File"/> and a UNC <c>file:</c> URI it is the URI's local path.
-/// It is null only for <see cref="ReferenceKind.Empty"/> and <see cref="ReferenceKind.Fragment"/>.</para>
+/// separators are converted to the platform's (a no-op on POSIX, where '\' is an ordinary character in a name); for
+/// <see cref="ReferenceKind.File"/> and a UNC <c>file:</c> URI it is the URI's local path. It is null only for
+/// <see cref="ReferenceKind.Empty"/> and <see cref="ReferenceKind.Fragment"/>.</para>
+/// <para>The two shapes that spell an absolute path on <em>another</em> platform, <c>\\server\share</c> and
+/// <c>C:\dir</c>, keep their kinds everywhere even though POSIX would read them as relative names. A README written
+/// on Windows then resolves to nothing on a Mac (the resolver refuses both kinds there) instead of pointing at a file
+/// with an absurd name. A single leading separator is the one rule that follows the platform, so <c>\x</c> is a
+/// relative name on POSIX and root-relative on Windows.</para>
 /// </remarks>
 public static class ReferenceParser
 {
-    public static ParsedReference Parse(string? raw)
+    public static ParsedReference Parse(string? raw, PathPolicy? policy = null)
     {
+        policy ??= PathPolicy.Current;
         var original = raw ?? string.Empty;
         var text = Clean(original);
 
@@ -70,19 +77,19 @@ public static class ReferenceParser
 
         if (TryGetScheme(decoded, out var scheme))
         {
-            return ParseAbsolute(scheme, text, original, decoded, query, fragment);
+            return ParseAbsolute(scheme, text, original, decoded, query, fragment, policy);
         }
 
-        return decoded.Length >= 1 && IsSeparator(decoded[0])
+        return decoded.Length >= 1 && policy.IsDirectorySeparator(decoded[0])
             ? Local(ReferenceKind.RootRelative, decoded)
             : Local(ReferenceKind.Relative, decoded);
 
         ParsedReference Local(ReferenceKind kind, string path) =>
-            new(kind, original, ToLocalSeparators(path), query, fragment, null);
+            new(kind, original, policy.ToLocalSeparators(path), query, fragment, null);
     }
 
     private static ParsedReference ParseAbsolute(
-        string scheme, string text, string original, string decoded, string? query, string? fragment)
+        string scheme, string text, string original, string decoded, string? query, string? fragment, PathPolicy policy)
     {
         var isHttp = scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase);
         var isHttps = scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
@@ -113,15 +120,15 @@ public static class ReferenceParser
             return new ParsedReference(ReferenceKind.Mailto, original, decoded, query, fragment, uri);
         }
 
-        // file: — only drive-absolute local paths and UNC paths are meaningful. Re-check the local path lexically
-        // ("file://localhost/C:/x" has IsUnc = true and yields "\\localhost\C:\x", which then counts as UNC).
-        var localPath = ToLocalSeparators(uri.LocalPath);
-        if (uri.IsUnc || (localPath.Length >= 2 && localPath[0] == '\\' && localPath[1] == '\\'))
+        // file: — only fully qualified local paths and paths naming a host are meaningful. Re-check the local path
+        // lexically ("file://localhost/C:/x" names a host and yields "\\localhost\C:\x", which then counts as UNC).
+        var localPath = policy.GetFileUriPath(uri);
+        if (uri.Host.Length > 0 || (localPath.Length >= 2 && IsSeparator(localPath[0]) && IsSeparator(localPath[1])))
         {
             return new ParsedReference(ReferenceKind.Unc, original, localPath, query, fragment, uri);
         }
 
-        return localPath.Length >= 3 && IsAsciiLetter(localPath[0]) && localPath[1] == ':' && localPath[2] == '\\'
+        return policy.IsFullyQualified(localPath)
             ? new ParsedReference(ReferenceKind.File, original, localPath, query, fragment, uri)
             : new ParsedReference(ReferenceKind.Invalid, original, localPath, query, fragment, null);
     }
@@ -215,8 +222,7 @@ public static class ReferenceParser
         return false;
     }
 
-    private static string ToLocalSeparators(string path) => path.Replace('/', '\\');
-
+    /// <summary>A separator in a URL reference, whatever platform wrote it: browsers and Windows accept both.</summary>
     private static bool IsSeparator(char c) => c is '/' or '\\';
 
     private static bool IsAsciiLetter(char c) => char.IsAsciiLetter(c);

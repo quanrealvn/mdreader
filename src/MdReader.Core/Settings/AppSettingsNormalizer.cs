@@ -1,3 +1,5 @@
+using MdReader.Core.Paths;
+
 namespace MdReader.Core.Settings;
 
 // Owned by WP4 (ARCHITECTURE §2.2, §4.6).
@@ -6,8 +8,9 @@ public static class AppSettingsNormalizer
 {
     /// Clamp Zoom (ZoomLevels.Clamp; NaN → Default), dedupe/trim RecentFiles (rooted paths only, max 10),
     /// drop Window if Width/Height < 200 or any value is NaN/∞,
-    /// Session: fully-qualified paths only, trimmed, case-insensitive unique, max SessionState.MaxFiles, ActiveFile one of
-    /// them (else null); clamp TocWidth and SplitRatio (NaN/∞ → Default); unknown SchemaVersion → defaults.
+    /// Session: fully-qualified paths only, trimmed, unique the way this platform matches file names (ignoring case on
+    /// Windows and macOS, exactly on Linux), max SessionState.MaxFiles, ActiveFile one of them (else null);
+    /// clamp TocWidth and SplitRatio (NaN/∞ → Default); unknown SchemaVersion → defaults.
     public static AppSettings Normalize(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -43,7 +46,7 @@ public static class AppSettingsNormalizer
 
         // Files can be null at runtime despite the annotation (a positional record deserialized without "files").
         var files = new List<string>(Math.Min(session.Files?.Count ?? 0, SessionState.MaxFiles));
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(PathPolicy.Current.Comparer);
         foreach (var raw in session.Files ?? [])
         {
             if (files.Count >= SessionState.MaxFiles)
@@ -52,7 +55,7 @@ public static class AppSettingsNormalizer
             }
 
             var path = raw?.Trim();
-            if (!string.IsNullOrEmpty(path) && Path.IsPathFullyQualified(path) && seen.Add(path))
+            if (!string.IsNullOrEmpty(path) && PathPolicy.Current.IsFullyQualified(path) && seen.Add(path))
             {
                 files.Add(path);
             }
@@ -61,7 +64,7 @@ public static class AppSettingsNormalizer
         var active = session.ActiveFile?.Trim();
         var activeFile = string.IsNullOrEmpty(active)
             ? null
-            : files.Find(f => string.Equals(f, active, StringComparison.OrdinalIgnoreCase));
+            : files.Find(f => string.Equals(f, active, PathPolicy.Current.Comparison));
         return new SessionState(files, activeFile);
     }
 
@@ -97,7 +100,7 @@ public static class AppSettingsNormalizer
         }
 
         var result = new List<string>(Math.Min(recentFiles.Count, RecentFiles.MaxCount));
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(PathPolicy.Current.Comparer);
 
         foreach (var raw in recentFiles)
         {

@@ -5,8 +5,10 @@ using MdReader.Core.Diagnostics;
 namespace MdReader.Core.SingleInstance;
 
 /// <summary>
-/// Single-instance detection (named mutex) and path forwarding (named pipe, protocol v1 in <see cref="PipeFraming"/>).
-/// See ARCHITECTURE §4.5.
+/// The <see cref="SingleInstanceMode.HostManaged"/> channel: single-instance detection (named mutex) and path
+/// forwarding (named pipe, protocol v1 in <see cref="PipeFraming"/>). See ARCHITECTURE §4.5. Platforms that keep the
+/// application to one instance themselves use <see cref="OsManagedSingleInstanceChannel"/>; shells choose through
+/// <see cref="SingleInstanceChannels.Create"/> rather than naming either.
 /// </summary>
 /// <remarks>
 /// <para><b>Mutex and threads.</b> <see cref="TryBecomePrimary"/> creates the mutex with <c>initiallyOwned: true</c>,

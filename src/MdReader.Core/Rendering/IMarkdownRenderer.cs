@@ -11,6 +11,8 @@ public interface IMarkdownRenderer
 /// DocumentPath: absolute, normalized. ResourceRoot: absolute folder mapped to https://doc.mdreader.example/.
 public sealed record RenderContext(string DocumentPath, string ResourceRoot)
 {
+    /// <summary>The document's folder, per the running platform. Path resolution for author-written references does
+    /// not use it: that goes through the <see cref="Paths.PathPolicy"/> the sanitizer was given.</summary>
     public string DocumentDirectory => Path.GetDirectoryName(DocumentPath)!;
 
     /// false (web version, §15): every local image reference (relative, root-relative, Windows absolute, file:, UNC,
