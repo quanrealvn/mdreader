@@ -45,7 +45,7 @@ jobs:
             nuget-macos-
 
       - name: Work out what this branch can build here
-        # MdReader.Core is on every branch. MdReader.Shell and MdReader.Avalonia only exist on the port's
+        # MdReader.Core is on every branch. MdReader.Shell and MdReader.Ui (the Avalonia shell) only exist on the port's
         # branch, and while the Avalonia shell still sits on the WebView2 backend it targets
         # net10.0-windows, which no macOS runner can build. Both cases are skipped with a note instead of
         # failing, so this workflow is green on main and stays green as the port lands piece by piece.
@@ -55,7 +55,7 @@ jobs:
           for proj in \
             src/MdReader.Core/MdReader.Core.csproj \
             src/MdReader.Shell/MdReader.Shell.csproj \
-            src/MdReader.Avalonia/MdReader.Avalonia.csproj
+            src/MdReader.Ui/MdReader.Ui.csproj
           do
             if [ ! -f "$proj" ]; then
               echo "not on this branch, skipping: $proj"
@@ -80,10 +80,10 @@ jobs:
             echo "::endgroup::"
           done
 
-      # Phase 3 of docs/AVALONIA-PLAN.md turns this into a real Mac download. Once MdReader.Avalonia (or
-      # MdReader.Shell) targets plain net10.0, add one step here:
+      # Phase 3 of docs/AVALONIA-PLAN.md turns this into a real Mac download. MdReader.Shell already builds here;
+      # once MdReader.Ui targets plain net10.0 too, add one step here:
       #
-      #   dotnet publish src/MdReader.Avalonia/MdReader.Avalonia.csproj -c Release -r osx-arm64 \
+      #   dotnet publish src/MdReader.Ui/MdReader.Ui.csproj -c Release -r osx-arm64 \
       #     --self-contained -o artifacts/macos/publish
       #
       # then lay out artifacts/macos/MdReader.app/Contents/{MacOS,Resources} with an Info.plist (the .md
