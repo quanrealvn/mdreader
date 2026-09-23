@@ -1,0 +1,90 @@
+<!-- One document tab's view (ARCHITECTURE §4.10–§4.12): the tab's WebView2 controller inside a native host window
+     (created in code into WebViewHost, never re-parented), the find bar docked above it (Avalonia can't draw over the
+     native child window), and an Avalonia error panel used only when the page itself can't be shown (protocol mismatch,
+     repeated renderer crashes, WebView2 failure). -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:MdReader.Ui.Views"
+             xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
+             x:Class="MdReader.Ui.Views.DocumentView"
+             automation:AutomationProperties.AutomationId="DocumentView"
+             Focusable="False">
+  <Grid RowDefinitions="Auto,*">
+
+    <views:FindBar Name="FindBarControl" Grid.Row="0" />
+
+    <!-- Split view (§4.10): the Markdown source on the left, the preview on the right. Both left columns collapse to
+         zero width in preview-only mode, so the web view keeps the whole area and is never re-parented. -->
+    <Grid Name="SplitGrid" Grid.Row="1" ColumnDefinitions="0,0,*">
+
+      <TextBox Name="EditorBox"
+               Grid.Column="0"
+               IsVisible="False"
+               automation:AutomationProperties.AutomationId="EditorTextBox"
+               automation:AutomationProperties.Name="Markdown source"
+               AcceptsReturn="True"
+               AcceptsTab="True"
+               IsReadOnly="True"
+               TextWrapping="NoWrap"
+               ScrollViewer.HorizontalScrollBarVisibility="Auto"
+               ScrollViewer.VerticalScrollBarVisibility="Auto"
+               FontFamily="Cascadia Mono, Consolas, Courier New"
+               FontSize="13"
+               Padding="10,8"
+               BorderThickness="0"
+               CornerRadius="0"
+               UndoLimit="200"
+               Background="{DynamicResource Brush.Document.Background}"
+               Foreground="{DynamicResource Brush.Foreground}"
+               CaretBrush="{DynamicResource Brush.Foreground}" />
+
+      <GridSplitter Name="EditorSplitter"
+                    Grid.Column="1"
+                    Width="6"
+                    IsVisible="False"
+                    ResizeDirection="Columns"
+                    ResizeBehavior="PreviousAndNext"
+                    Focusable="False"
+                    automation:AutomationProperties.AutomationId="EditorSplitter"
+                    automation:AutomationProperties.Name="Resize the editor"
+                    Background="{DynamicResource Brush.Border}"
+                    DragCompleted="OnSplitterDragCompleted" />
+
+      <!-- Holds the tab's native WebView2 host window, created in code. -->
+      <Panel Name="WebViewHost" Grid.Column="2" />
+    </Grid>
+
+    <Border Name="HostErrorPanel"
+            Grid.Row="1"
+            IsVisible="False"
+            automation:AutomationProperties.AutomationId="DocumentHostError"
+            Background="{DynamicResource Brush.Document.Background}">
+      <StackPanel MaxWidth="640" Margin="32" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <TextBlock Name="HostErrorTitle"
+                   FontSize="20"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.Foreground}" />
+        <TextBlock Name="HostErrorMessage"
+                   Margin="0,8,0,0"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.Foreground}" />
+        <TextBox Name="HostErrorPath"
+                 Margin="0,12,0,0"
+                 Padding="0"
+                 IsReadOnly="True"
+                 BorderThickness="0"
+                 Background="Transparent"
+                 TextWrapping="Wrap"
+                 Foreground="{DynamicResource Brush.Foreground.Muted}" />
+        <Button Name="HostErrorRetryButton"
+                automation:AutomationProperties.AutomationId="HostErrorRetryButton"
+                Margin="0,16,0,0"
+                Padding="14,5"
+                HorizontalAlignment="Left"
+                Content="Try again"
+                Click="OnHostErrorRetryClick" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

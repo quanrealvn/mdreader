@@ -2,8 +2,8 @@ using System.Collections.Concurrent;
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Avalonia.Controls;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using MdReader.Core.Diagnostics;
@@ -11,17 +11,10 @@ using Microsoft.Web.WebView2.Core;
 
 namespace MdReader.Ui.WebView;
 
-/// <summary>Raised once the tab's <see cref="CoreWebView2"/> exists and is ready to be configured and navigated.</summary>
-internal sealed class CoreWebView2ReadyEventArgs(CoreWebView2Controller controller) : EventArgs
-{
-    public CoreWebView2Controller Controller { get; } = controller;
-
-    public CoreWebView2 Core { get; } = controller.CoreWebView2;
-}
-
 /// <summary>
 /// Avalonia has no WebView control, so this is the seam the whole port rests on: a <see cref="NativeControlHost"/> that
-/// owns a child HWND of its own and drives a <see cref="CoreWebView2Controller"/> inside it.
+/// owns a child HWND of its own and drives a <see cref="CoreWebView2Controller"/> inside it. One per tab, created once
+/// and never re-parented (§4.11).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -47,37 +40,32 @@ internal sealed class WebView2Host : NativeControlHost
     private static readonly ConcurrentDictionary<nint, WebView2Host> Hosts = new();
 
     private readonly IAppLog _log;
-    private readonly Func<Task<CoreWebView2Environment>> _environmentFactory;
+    private readonly TaskCompletionSource<nint> _hostWindowReady =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private nint _hwnd;
     private CoreWebView2Controller? _controller;
     private bool _destroyed;
 
-    public WebView2Host(IAppLog log, Func<Task<CoreWebView2Environment>> environmentFactory)
+    public WebView2Host(IAppLog log)
     {
         _log = log;
-        _environmentFactory = environmentFactory;
     }
-
-    /// <summary>The controller is created asynchronously after the control is attached to a window.</summary>
-    public event EventHandler<CoreWebView2ReadyEventArgs>? CoreWebView2Ready;
-
-    /// <summary>Failure to create the environment or the controller (WebView2 runtime missing, etc.).</summary>
-    public event EventHandler<Exception>? InitializationFailed;
 
     /// <summary>
     /// Every key the page sees, before the page sees it. This is the only route by which keystrokes typed inside the
     /// native web view can reach the Avalonia shell: Avalonia's own <c>KeyDown</c> never fires while the native child
-    /// HWND has focus.
+    /// HWND has focus. Raised synchronously with the browser process blocked, so handlers must defer their work (§4.12).
     /// </summary>
     public event EventHandler<CoreWebView2AcceleratorKeyPressedEventArgs>? AcceleratorKeyPressed;
 
-    /// <summary>The child HWND the controller lives in (0 before the control is attached).</summary>
-    public nint HostHandle => _hwnd;
+    /// <summary>
+    /// Keyboard focus moved into the native web view. Avalonia never sees this, because the child HWND takes the focus
+    /// away from the top level; the print-mode fallback (R6) needs it.
+    /// </summary>
+    public event EventHandler? WebViewFocused;
 
     public CoreWebView2Controller? Controller => _controller;
-
-    public CoreWebView2? Core => _controller?.CoreWebView2;
 
     /// <summary>Moves keyboard focus into the page. Never called in capture mode (it would activate the window).</summary>
     public void FocusWebView()
@@ -92,32 +80,114 @@ internal sealed class WebView2Host : NativeControlHost
         }
     }
 
+    /// <summary>
+    /// Creates the controller once the host window exists. Also used to build a replacement after the browser process
+    /// exited, which leaves the old controller closed for good (§4.10).
+    /// </summary>
+    /// <param name="background">
+    /// The colour the view paints before the page has drawn anything; set before the controller becomes visible, so
+    /// nothing flashes white (§10).
+    /// </param>
+    public async Task<CoreWebView2Controller> CreateControllerAsync(CoreWebView2Environment environment, Color background)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        if (_controller is not null)
+        {
+            throw new InvalidOperationException("This host already has a WebView2 controller.");
+        }
+
+        nint hwnd = await _hostWindowReady.Task.ConfigureAwait(true);
+        ObjectDisposedException.ThrowIf(_destroyed, this);
+
+        CoreWebView2Controller controller = await environment.CreateCoreWebView2ControllerAsync(hwnd).ConfigureAwait(true);
+        if (_destroyed || _hwnd != hwnd)
+        {
+            controller.Close();
+            throw new OperationCanceledException("The document view was closed while its WebView was being created.");
+        }
+
+        _controller = controller;
+        controller.DefaultBackgroundColor = background;
+
+        // One source of truth for scale. WebView2 would happily track the monitor itself, but then Avalonia's
+        // RenderScaling and the page's RasterizationScale are two independent values that agree only by accident
+        // (they diverge as soon as Avalonia's scaling is overridden, or its DPI awareness differs from ours).
+        // Driving the scale from the top level is also the shape that ports: on macOS WKWebView follows the
+        // window's backingScaleFactor.
+        try
+        {
+            controller.ShouldDetectMonitorScaleChanges = false;
+        }
+        catch (NotImplementedException)
+        {
+            _log.Write(AppLogLevel.Warning, Category, "This WebView2 runtime can't turn off monitor scale detection.");
+        }
+
+        try
+        {
+            controller.AllowExternalDrop = true;   // files dropped onto the page (§4.11)
+        }
+        catch (NotImplementedException)
+        {
+            _log.Write(AppLogLevel.Warning, Category, "This WebView2 runtime can't accept external drops.");
+        }
+
+        ApplyScale();
+        controller.AcceleratorKeyPressed += OnAcceleratorKeyPressed;
+        SyncBounds();
+        controller.IsVisible = true;
+        _log.Write(AppLogLevel.Info, Category,
+            $"Controller ready; bounds {controller.Bounds.Width}x{controller.Bounds.Height} px, rasterization scale {controller.RasterizationScale:0.###}.");
+        return controller;
+    }
+
+    /// <summary>Closes the controller but keeps the host window, so a replacement can be created in place.</summary>
+    public void DestroyController()
+    {
+        CoreWebView2Controller? controller = _controller;
+        _controller = null;
+        if (controller is null)
+        {
+            return;
+        }
+
+        try
+        {
+            controller.AcceleratorKeyPressed -= OnAcceleratorKeyPressed;
+            controller.Close();   // closes the browser/render processes for this controller
+        }
+        catch (Exception ex)
+        {
+            _log.Write(AppLogLevel.Warning, Category, "Closing the WebView2 controller failed.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Tears the native side down from the tab's Dispose. Avalonia does not call
+    /// <see cref="DestroyNativeControlCore"/> when the application shuts down, and leaving the controller open makes
+    /// the browser process complain on the way out ("Failed to unregister class Chrome_WidgetWin_0").
+    /// </summary>
+    public void Shutdown() => DestroyNativeControlCore(new PlatformHandle(_hwnd, "HWND"));
+
     protected override unsafe IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
         ArgumentNullException.ThrowIfNull(parent);
         if (_hwnd != 0)
         {
-            // Avalonia destroys and recreates the native control when the host moves between top levels. The spike has
-            // one window, so this is a "would break in the real shell" marker rather than a handled case.
+            // Avalonia destroys and recreates the native control when the host moves between top levels. A document
+            // view lives in exactly one window, so this can only mean a bug elsewhere.
             _log.Write(AppLogLevel.Warning, Category, "The native control was created a second time; the WebView2 controller is not re-parented.");
             return new PlatformHandle(_hwnd, "HWND");
         }
 
         _hwnd = NativeMethods.CreateHostWindow(parent.Handle, &StaticWndProc);
         Hosts[_hwnd] = this;
-        _log.Write(AppLogLevel.Info, Category,
+        _log.Write(AppLogLevel.Debug, Category,
             $"Host window 0x{_hwnd:X} created under parent 0x{parent.Handle:X} ({parent.HandleDescriptor}); DPI {NativeMethods.GetDpiForWindow(_hwnd)}.");
 
-        _ = CreateControllerAsync();
+        _hostWindowReady.TrySetResult(_hwnd);
         return new PlatformHandle(_hwnd, "HWND");
     }
-
-    /// <summary>
-    /// Tears the native side down from the window's <c>Closed</c>. Avalonia does not call
-    /// <see cref="DestroyNativeControlCore"/> when the application shuts down, and leaving the controller open makes
-    /// the browser process complain on the way out ("Failed to unregister class Chrome_WidgetWin_0").
-    /// </summary>
-    public void Shutdown() => DestroyNativeControlCore(new PlatformHandle(_hwnd, "HWND"));
 
     protected override void DestroyNativeControlCore(IPlatformHandle control)
     {
@@ -127,19 +197,8 @@ internal sealed class WebView2Host : NativeControlHost
         }
 
         _destroyed = true;
-        CoreWebView2Controller? controller = _controller;
-        _controller = null;
-        if (controller is not null)
-        {
-            try
-            {
-                controller.Close();   // closes the browser/render processes for this controller
-            }
-            catch (Exception ex)
-            {
-                _log.Write(AppLogLevel.Warning, Category, "Closing the WebView2 controller failed.", ex);
-            }
-        }
+        _hostWindowReady.TrySetException(new OperationCanceledException("The document view was closed before its WebView existed."));
+        DestroyController();
 
         nint hwnd = _hwnd;
         _hwnd = 0;
@@ -149,57 +208,7 @@ internal sealed class WebView2Host : NativeControlHost
             NativeMethods.DestroyWindow(hwnd);
         }
 
-        _log.Write(AppLogLevel.Info, Category, $"Host window 0x{hwnd:X} destroyed.");
-    }
-
-    private async Task CreateControllerAsync()
-    {
-        nint hwnd = _hwnd;
-        try
-        {
-            CoreWebView2Environment environment = await _environmentFactory().ConfigureAwait(true);
-            if (_destroyed || _hwnd != hwnd)
-            {
-                return;
-            }
-
-            CoreWebView2Controller controller = await environment.CreateCoreWebView2ControllerAsync(hwnd).ConfigureAwait(true);
-            if (_destroyed || _hwnd != hwnd)
-            {
-                controller.Close();
-                return;
-            }
-
-            _controller = controller;
-
-            // One source of truth for scale. WebView2 would happily track the monitor itself, but then Avalonia's
-            // RenderScaling and the page's RasterizationScale are two independent values that agree only by accident
-            // (they diverge as soon as Avalonia's scaling is overridden, or its DPI awareness differs from ours).
-            // Driving the scale from the top level is also the shape that ports: on macOS WKWebView follows the
-            // window's backingScaleFactor.
-            try
-            {
-                controller.ShouldDetectMonitorScaleChanges = false;
-            }
-            catch (NotImplementedException)
-            {
-                _log.Write(AppLogLevel.Warning, Category, "This WebView2 runtime can't turn off monitor scale detection.");
-            }
-
-            ApplyScale();
-            controller.AcceleratorKeyPressed += OnAcceleratorKeyPressed;
-            SyncBounds();
-            controller.IsVisible = true;
-            _log.Write(AppLogLevel.Info, Category,
-                $"Controller ready; bounds {controller.Bounds.Width}x{controller.Bounds.Height} px, rasterization scale {controller.RasterizationScale:0.###}.");
-
-            CoreWebView2Ready?.Invoke(this, new CoreWebView2ReadyEventArgs(controller));
-        }
-        catch (Exception ex)
-        {
-            _log.Write(AppLogLevel.Error, Category, "Creating the WebView2 controller failed.", ex);
-            InitializationFailed?.Invoke(this, ex);
-        }
+        _log.Write(AppLogLevel.Debug, Category, $"Host window 0x{hwnd:X} destroyed.");
     }
 
     private void OnAcceleratorKeyPressed(object? sender, CoreWebView2AcceleratorKeyPressedEventArgs e)
@@ -252,7 +261,6 @@ internal sealed class WebView2Host : NativeControlHost
             if (Math.Abs(controller.RasterizationScale - topLevel.RenderScaling) > 0.001)
             {
                 controller.RasterizationScale = topLevel.RenderScaling;
-                _log.Write(AppLogLevel.Info, Category, $"Rasterization scale set to {topLevel.RenderScaling:0.###}.");
             }
         }
         catch (Exception ex)
@@ -293,8 +301,6 @@ internal sealed class WebView2Host : NativeControlHost
                 // follows, but the order isn't guaranteed, so re-sync here as well; all three paths are idempotent.
                 ApplyScale();
                 SyncBounds();
-                _log.Write(AppLogLevel.Info, Category,
-                    $"DPI changed to {NativeMethods.GetDpiForWindow(hwnd)}; rasterization scale {_controller?.RasterizationScale:0.###}.");
                 break;
 
             case NativeMethods.WM_WINDOWPOSCHANGED:
@@ -312,6 +318,7 @@ internal sealed class WebView2Host : NativeControlHost
 
             case NativeMethods.WM_SETFOCUS:
                 FocusWebView();
+                WebViewFocused?.Invoke(this, EventArgs.Empty);
                 break;
         }
 

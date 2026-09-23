@@ -1,16 +1,37 @@
+using System.Diagnostics;
+using System.Security.Principal;
 using Avalonia;
-using MdReader.Ui.Spike;
-using MdReader.Ui.WebView;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using MdReader.Core.Cli;
 using MdReader.Core.Diagnostics;
 using MdReader.Core.Hosting;
+using MdReader.Core.Settings;
+using MdReader.Core.SingleInstance;
+using MdReader.Shell.Hosting;
+using MdReader.Shell.Services;
+using MdReader.Shell.Threading;
+using MdReader.Shell.ViewModels;
+using MdReader.Ui.Composition;
+using MdReader.Ui.Interop;
+using MdReader.Ui.Services;
+using MdReader.Ui.Views;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace MdReader.Ui;
 
-internal static class Program
+/// Entry point implementing the startup sequence of ARCHITECTURE §6, the same one the WPF shell runs:
+/// mainEntered → CLI (exit 2) → AppPaths → single instance (forward → exit 0) → Avalonia + DI + settings → WebView2
+/// environment → theme + window + placement → reopen the last session + open CLI files → Show → pipe server → run loop.
+/// Exit codes (§4.7): 0 ok/forwarded/help, 1 crash, 2 command line, 3 WebView2 unavailable, 4 capture failed.
+public static class Program
 {
+    internal const int ExitCodeSuccess = 0;
+    internal const int ExitCodeCrash = 1;
+    internal const int ExitCodeCommandLine = 2;
+
     private const string Category = "Startup";
-    private const string DefaultSample = "docs/samples/showcase.md";
+    private const string TestModeEnvironmentVariable = "MDREADER_TEST_MODE";
 
     /// <summary>
     /// STA is not optional: WebView2 is COM, and <c>CreateCoreWebView2ControllerAsync</c> completes through the same
@@ -19,77 +40,319 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        CommandLineParseResult parsed = CommandLineParser.Parse(args, Environment.CurrentDirectory);
+        StartupClock.MarkMainEntered();
+
+        var parsed = CommandLineParser.Parse(args, Environment.CurrentDirectory, Environment.GetEnvironmentVariable);
         if (!parsed.IsSuccess)
         {
-            Console.Error.WriteLine(parsed.Error);
-            Console.Error.WriteLine(CommandLineParser.UsageText);
-            return SpikeExitCodes.CommandLineError;
+            return ReportCommandLineError(args, parsed.Error ?? "The command line isn't valid.");
         }
 
         CommandLineOptions options = parsed.Options!;
         if (options.ShowHelp)
         {
-            Console.Error.WriteLine(CommandLineParser.UsageText);
-            return SpikeExitCodes.Success;
+            ShowHelp(options);
+            return ExitCodeSuccess;
         }
 
-        string? documentPath = options.Files.Count > 0 ? options.Files[0] : FindDefaultSample();
-        if (documentPath is null)
-        {
-            Console.Error.WriteLine($"No file given and the default sample ({DefaultSample}) isn't next to the build output.");
-            return SpikeExitCodes.CommandLineError;
-        }
-
-        AppPaths paths = AppPaths.Create(options.ProfileDirectory ?? DefaultProfileDirectory(), AppContext.BaseDirectory);
-        Directory.CreateDirectory(paths.LogsFolder);
-#if DEBUG
-        const AppLogLevel MinimumLevel = AppLogLevel.Debug;
-#else
-        const AppLogLevel MinimumLevel = AppLogLevel.Info;
-#endif
-        using var fileLog = new FileAppLog(paths.LogsFolder, MinimumLevel);
-        var log = new CompositeAppLog(fileLog, new StandardErrorAppLog(MinimumLevel));
-        log.Write(AppLogLevel.Info, Category,
-            $"MdReader Avalonia spike starting: {documentPath}; profile {paths.LogsFolder}; capture {options.CapturePath ?? "(none)"}.");
-
-        var environment = new WebViewEnvironmentFactory(paths.WebView2UserDataFolder, log);
-        var context = new SpikeContext(options, paths, log, documentPath, environment);
-
+        AppPaths paths = AppPaths.Create(options.ProfileDirectory, AppContext.BaseDirectory);
+        EnsureProfileDirectory(options);
+        FileAppLog log = ServiceRegistration.CreateLog(paths);
         try
         {
-            return AppBuilder.Configure(() => new App(context))
-                .UsePlatformDetect()
-                .LogToTrace()
-                .StartWithClassicDesktopLifetime(args);
+            log.Write(AppLogLevel.Info, Category,
+                $"MdReader {typeof(Program).Assembly.GetName().Version} (Avalonia shell) starting: pid {Environment.ProcessId}, "
+                + $"instance '{options.InstanceId}', test mode {options.IsTestMode}, {options.Files.Count} file(s)"
+                + (options.CapturePath is null ? "" : ", capture")
+                + (options.PerfLogPath is null ? "" : ", perf log"));
+
+            ISingleInstanceChannel? channel = null;
+            if (options.CapturePath is null)   // --capture implies standalone: never forward, never serve
+            {
+                channel = AcquireSingleInstance(options, log, out bool forwarded);
+                if (forwarded)
+                {
+                    return ExitCodeSuccess;
+                }
+            }
+
+            try
+            {
+                return RunApplication(args, options, paths, channel, log);
+            }
+            finally
+            {
+                channel?.Dispose();
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            log.Write(AppLogLevel.Error, Category, "The application failed.", ex);
-            Console.Error.WriteLine(ex);
-            return SpikeExitCodes.CaptureFailed;
+            log.Write(AppLogLevel.Info, Category, "Exiting");
+            log.Dispose();
         }
     }
 
-    /// <summary>
-    /// The spike keeps its WebView2 user data, logs and settings out of the real app's profile so it can never disturb
-    /// a running MdReader (the environment options would have to match exactly if they shared a folder).
-    /// </summary>
-    private static string DefaultProfileDirectory() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MdReader", "AvaloniaSpike");
+    private static ISingleInstanceChannel? AcquireSingleInstance(CommandLineOptions options, IAppLog log, out bool forwarded) =>
+        SingleInstanceGate.Acquire(options, new SingleInstanceIdentity(GetUserSid(), GetSessionId(), options.InstanceId),
+                                   pid => NativeMethods.AllowSetForegroundWindow(pid), log, out forwarded);
 
-    /// <summary>Walks up from the build output looking for the repo's sample, so plain <c>dotnet run</c> shows something.</summary>
-    private static string? FindDefaultSample()
+    private static int RunApplication(string[] args, CommandLineOptions options, AppPaths paths, ISingleInstanceChannel? channel,
+                                      IAppLog log)
     {
-        for (DirectoryInfo? directory = new(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        // SetupWithLifetime initializes Avalonia on this thread without running the loop, so everything below happens
+        // in the same order as in the WPF shell and the window is built before anything is shown.
+        var lifetime = new ClassicDesktopStyleApplicationLifetime { ShutdownMode = ShutdownMode.OnMainWindowClose, Args = args };
+        AppBuilder.Configure<App>().UsePlatformDetect().LogToTrace().SetupWithLifetime(lifetime);
+
+        var crashHandler = new CrashHandler(new CrashReporter(options, paths, new AvaloniaAppHost(options), log));
+        crashHandler.Install();
+
+        ServiceProvider? services = null;
+        int exitCode = ExitCodeCrash;
+        try
         {
-            string candidate = Path.Combine(directory.FullName, DefaultSample.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(candidate))
+            services = ServiceRegistration.Build(options, paths, channel, log);
+            var perf = services.GetRequiredService<PerfRecorder>();
+            _ = services.GetRequiredService<SettingsCoordinator>();                  // synchronous settings load
+
+            services.GetRequiredService<IWebViewEnvironmentProvider>().Start();      // as early as possible (§6)
+
+            var theme = services.GetRequiredService<ThemeService>();                 // resolves the effective theme
+            _ = services.GetRequiredService<AvaloniaThemeWindows>();                 // applies the variant, follows changes
+            if (options.ThemeOverride is { } themeOverride)
             {
-                return Path.GetFullPath(candidate);
+                theme.ApplySessionOverride(themeOverride);
+            }
+
+            // The last session is restored and recorded by the primary instance only (never with --capture, which has no
+            // channel); its files' existence checks run in the background while the window is built.
+            var session = channel is not null ? services.GetRequiredService<SessionService>() : null;
+            session?.BeginRestore();
+
+            var window = services.GetRequiredService<MainWindow>();                  // placement restored, DWM attached
+            lifetime.MainWindow = window;
+
+            var capture = services.GetRequiredService<CaptureRunner>();
+            if (capture.IsEnabled)
+            {
+                capture.Start();                                                        // opens the first file only
+            }
+            else if (session is not null)
+            {
+                session.OpenStartupFiles(options.Files);                                 // saved tabs, then the CLI files
+            }
+            else
+            {
+                SingleInstanceGate.OpenFiles(services.GetRequiredService<IDocumentOpener>(), options.Files);
+            }
+
+            // One orderly teardown for every way out (window closed, Shutdown, logoff/shutdown, Restart Manager): it runs
+            // while the window and the browser processes still exist (§4.11).
+            var placement = services.GetRequiredService<WindowPlacementService>();
+            var mainViewModel = services.GetRequiredService<MainViewModel>();
+            var shutdown = new OrderlyShutdown(() => placement.Save(window), services.GetRequiredService<SettingsCoordinator>(),
+                                               mainViewModel, session, log);
+            window.Closing += (_, e) =>
+            {
+                if (e.Cancel)
+                {
+                    return;
+                }
+
+                if (!mainViewModel.ConfirmCloseAllTabs())
+                {
+                    e.Cancel = true;   // unsaved edits and the user chose Cancel (§4.10)
+                    return;
+                }
+
+                shutdown.Run("the main window is closing");
+            };
+            services.GetRequiredService<SessionEndWatcher>().Attach(window, reason => shutdown.Run(reason, saveUnsavedTabs: true));
+
+            window.Show();   // never activated with --capture or in test mode; the window decides that itself
+            perf.Mark(PerfMarks.WindowShown);
+
+            if (channel is not null)
+            {
+                var activator = services.GetRequiredService<WindowActivator>();
+                shutdown.StopForwarding = SingleInstanceGate.Serve(channel, options, services.GetRequiredService<IUiDispatcher>(),
+                                                                   services.GetRequiredService<IDocumentOpener>(),
+                                                                   () => activator.Activate(window), log);
+            }
+
+            if (perf.IsEnabled)
+            {
+                services.GetRequiredService<UiStallMonitor>().Start();
+            }
+
+            exitCode = lifetime.Start(args);   // the window is already open; this runs the loop
+        }
+        catch (Exception ex)
+        {
+            crashHandler.ReportFatal(ex);
+            exitCode = ExitCodeCrash;
+        }
+        finally
+        {
+            Shutdown(services, log);
+        }
+
+        log.Write(AppLogLevel.Info, Category, $"Exit code {exitCode}");
+        return exitCode;
+    }
+
+    private static void Shutdown(ServiceProvider? services, IAppLog log)
+    {
+        if (services is null)
+        {
+            return;
+        }
+
+        try
+        {
+            services.GetService<UiStallMonitor>()?.Dispose();
+            services.GetService<PerfRecorder>()?.WriteReportIfPending();
+            services.GetService<SettingsCoordinator>()?.Flush();   // the only blocking save (§5)
+        }
+        catch (Exception ex)
+        {
+            log.Write(AppLogLevel.Error, Category, "Saving state at exit failed", ex);
+        }
+
+        try
+        {
+            services.Dispose();   // disposes MainViewModel (tabs/web views), ThemeService, SettingsCoordinator, …
+        }
+        catch (Exception ex)
+        {
+            log.Write(AppLogLevel.Error, Category, "Disposing services at exit failed", ex);
+        }
+    }
+
+    // ----- Command line errors and help (before Avalonia exists) -----
+
+    private static int ReportCommandLineError(string[] args, string error)
+    {
+        bool testMode = IsTestModeRequested(args);
+        WriteConsole(Console.Error, $"MdReader: {error}");
+        LogCommandLineError(args, error, testMode);
+        if (!testMode)
+        {
+            Win32Dialogs.Show(0, "MdReader", $"{error}\n\n{CommandLineParser.UsageText}", NativeMethods.MB_OK,
+                              NativeMethods.MB_ICONWARNING);
+        }
+
+        return ExitCodeCommandLine;
+    }
+
+    private static void ShowHelp(CommandLineOptions options)
+    {
+        WriteConsole(Console.Out, CommandLineParser.UsageText);
+        if (!options.IsTestMode)
+        {
+            Win32Dialogs.Show(0, "MdReader — command line", CommandLineParser.UsageText, NativeMethods.MB_OK,
+                              NativeMethods.MB_ICONINFORMATION);
+        }
+    }
+
+    /// The parser failed, so the options are unknown: detect test mode and the profile directory from the raw arguments
+    /// to decide whether a message box may be shown and where the log goes (never the real profile in test mode).
+    private static bool IsTestModeRequested(IReadOnlyList<string> args) =>
+        Environment.GetEnvironmentVariable(TestModeEnvironmentVariable) == "1" || FindRawOption(args, "instance-id", out _);
+
+    private static void LogCommandLineError(IReadOnlyList<string> args, string error, bool testMode)
+    {
+        try
+        {
+            string? profile = null;
+            if (FindRawOption(args, "profile-dir", out string? rawProfile) && !string.IsNullOrWhiteSpace(rawProfile))
+            {
+                profile = Path.GetFullPath(rawProfile, Environment.CurrentDirectory);
+            }
+            else if (testMode)
+            {
+                return;   // no profile given: don't write into the user's real log folder from a test
+            }
+
+            AppPaths paths = AppPaths.Create(profile, AppContext.BaseDirectory);
+            using FileAppLog log = ServiceRegistration.CreateLog(paths);
+            log.Write(AppLogLevel.Error, Category, $"Invalid command line: {error}");
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException or UnauthorizedAccessException)
+        {
+            // Logging is best effort here; the exit code and stderr already report the error.
+        }
+    }
+
+    private static bool FindRawOption(IReadOnlyList<string> args, string name, out string? value)
+    {
+        value = null;
+        string flag = "--" + name;
+        for (var i = 0; i < args.Count; i++)
+        {
+            string arg = args[i];
+            if (arg == "--")
+            {
+                break;
+            }
+
+            if (string.Equals(arg, flag, StringComparison.OrdinalIgnoreCase))
+            {
+                value = i + 1 < args.Count ? args[i + 1] : null;
+                return true;
+            }
+
+            if (arg.StartsWith(flag + "=", StringComparison.OrdinalIgnoreCase))
+            {
+                value = arg[(flag.Length + 1)..];
+                return true;
             }
         }
 
-        return null;
+        return false;
+    }
+
+    private static void WriteConsole(TextWriter writer, string text)
+    {
+        try
+        {
+            writer.WriteLine(text);
+            writer.Flush();
+        }
+        catch (IOException)
+        {
+            // No usable console (WinExe without redirected output).
+        }
+    }
+
+    // ----- Environment -----
+
+    private static void EnsureProfileDirectory(CommandLineOptions options)
+    {
+        if (options.ProfileDirectory is null)
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(options.ProfileDirectory);   // "created if missing" (§4.7)
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            // Settings/log writers report their own failures; the app still starts.
+        }
+    }
+
+    private static string GetUserSid()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return identity.User!.Value;
+    }
+
+    private static int GetSessionId()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.SessionId;
     }
 }

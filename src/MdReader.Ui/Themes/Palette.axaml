@@ -1,0 +1,80 @@
+<!--
+  The light and dark palettes of ARCHITECTURE §10 (GitHub Primer), with exactly the keys the WPF shell's
+  Themes/Light.xaml and Themes/Dark.xaml define, so both shells paint the same colours.
+
+  Avalonia picks the block by the effective ThemeVariant instead of swapping a dictionary the way WPF does:
+  AvaloniaThemeWindows sets Application.RequestedThemeVariant from the ThemeService, and every reference below is a
+  DynamicResource, so the whole chrome repaints.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+
+    <ResourceDictionary x:Key="Light">
+      <!-- Contract keys (§10) -->
+      <SolidColorBrush x:Key="Brush.Document.Background" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Foreground" Color="#1F2328" />
+      <SolidColorBrush x:Key="Brush.Foreground.Muted" Color="#59636E" />
+      <SolidColorBrush x:Key="Brush.Border" Color="#D1D9E0" />
+      <SolidColorBrush x:Key="Brush.Chrome.Background" Color="#F6F8FA" />
+      <SolidColorBrush x:Key="Brush.Accent" Color="#0969DA" />
+      <SolidColorBrush x:Key="Brush.Tab.Active.Background" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Tab.Hover.Background" Color="#EAEEF2" />
+      <SolidColorBrush x:Key="Brush.Button.Hover.Background" Color="#1A818B98" />
+      <SolidColorBrush x:Key="Brush.Button.Pressed.Background" Color="#2E818B98" />
+      <SolidColorBrush x:Key="Brush.FindBar.Background" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Toast.Background" Color="#1F2328" />
+      <SolidColorBrush x:Key="Brush.Toast.Foreground" Color="#FFFFFF" />
+
+      <!-- Additional chrome keys -->
+      <SolidColorBrush x:Key="Brush.Foreground.Disabled" Color="#818B98" />
+      <SolidColorBrush x:Key="Brush.Border.Subtle" Color="#E5E9ED" />
+      <SolidColorBrush x:Key="Brush.Button.Checked.Background" Color="#1F0969DA" />
+      <SolidColorBrush x:Key="Brush.Accent.Emphasis" Color="#0969DA" />
+      <SolidColorBrush x:Key="Brush.Accent.Emphasis.Hover" Color="#0860CA" />
+      <SolidColorBrush x:Key="Brush.Accent.Emphasis.Pressed" Color="#0757BA" />
+      <SolidColorBrush x:Key="Brush.Accent.Foreground" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Warning" Color="#9A6700" />
+      <SolidColorBrush x:Key="Brush.Danger" Color="#CF222E" />
+      <SolidColorBrush x:Key="Brush.Menu.Background" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Menu.Border" Color="#D1D9E0" />
+      <SolidColorBrush x:Key="Brush.ToolTip.Background" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Input.Background" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Illustration.Background" Color="#EEF3F9" />
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Dark">
+      <!-- Contract keys (§10) -->
+      <SolidColorBrush x:Key="Brush.Document.Background" Color="#0D1117" />
+      <SolidColorBrush x:Key="Brush.Foreground" Color="#E6EDF3" />
+      <SolidColorBrush x:Key="Brush.Foreground.Muted" Color="#9198A1" />
+      <SolidColorBrush x:Key="Brush.Border" Color="#3D444D" />
+      <SolidColorBrush x:Key="Brush.Chrome.Background" Color="#151B23" />
+      <SolidColorBrush x:Key="Brush.Accent" Color="#4493F8" />
+      <SolidColorBrush x:Key="Brush.Tab.Active.Background" Color="#0D1117" />
+      <SolidColorBrush x:Key="Brush.Tab.Hover.Background" Color="#212830" />
+      <SolidColorBrush x:Key="Brush.Button.Hover.Background" Color="#33656C76" />
+      <SolidColorBrush x:Key="Brush.Button.Pressed.Background" Color="#4D656C76" />
+      <SolidColorBrush x:Key="Brush.FindBar.Background" Color="#0D1117" />
+      <SolidColorBrush x:Key="Brush.Toast.Background" Color="#2A313C" />
+      <SolidColorBrush x:Key="Brush.Toast.Foreground" Color="#E6EDF3" />
+
+      <!-- Additional chrome keys -->
+      <SolidColorBrush x:Key="Brush.Foreground.Disabled" Color="#656C76" />
+      <SolidColorBrush x:Key="Brush.Border.Subtle" Color="#262C36" />
+      <SolidColorBrush x:Key="Brush.Button.Checked.Background" Color="#334493F8" />
+      <SolidColorBrush x:Key="Brush.Accent.Emphasis" Color="#1F6FEB" />
+      <SolidColorBrush x:Key="Brush.Accent.Emphasis.Hover" Color="#388BFD" />
+      <SolidColorBrush x:Key="Brush.Accent.Emphasis.Pressed" Color="#1A5FCC" />
+      <SolidColorBrush x:Key="Brush.Accent.Foreground" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Warning" Color="#D29922" />
+      <SolidColorBrush x:Key="Brush.Danger" Color="#F85149" />
+      <SolidColorBrush x:Key="Brush.Menu.Background" Color="#151B23" />
+      <SolidColorBrush x:Key="Brush.Menu.Border" Color="#3D444D" />
+      <SolidColorBrush x:Key="Brush.ToolTip.Background" Color="#212830" />
+      <SolidColorBrush x:Key="Brush.Input.Background" Color="#0D1117" />
+      <SolidColorBrush x:Key="Brush.Illustration.Background" Color="#161E2A" />
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

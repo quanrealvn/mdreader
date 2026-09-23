@@ -1,0 +1,24 @@
+<!--
+  The Avalonia application object. Startup is driven by Program.Main (ARCHITECTURE §6), not by OnFrameworkInitializationCompleted:
+  the services, the theme and the window are built there, exactly as in the WPF shell.
+  RequestedThemeVariant is set by AvaloniaThemeWindows before the first window exists, so nothing renders with the wrong colours.
+-->
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MdReader.Ui.App"
+             RequestedThemeVariant="Light">
+
+  <Application.Styles>
+    <FluentTheme />
+  </Application.Styles>
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://MdReader.Ui/Themes/Palette.axaml" />
+        <ResourceInclude Source="avares://MdReader.Ui/Themes/Controls.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+</Application>

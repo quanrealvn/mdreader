@@ -2,15 +2,19 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <!-- Phase 1 of docs/AVALONIA-PLAN.md: the Avalonia shell still runs on the WebView2 backend, so the spike is
-         Windows-only. The TFM becomes net10.0 (plus per-RID backends) when the macOS channel lands in phase 2. -->
+    <!-- Phase 1 of docs/AVALONIA-PLAN.md: the Avalonia shell still runs on the WebView2 backend, so it is Windows-only.
+         The TFM becomes net10.0 (plus per-RID backends) when the macOS channel lands in phase 2. -->
     <TargetFramework>net10.0-windows</TargetFramework>
     <AssemblyName>MdReader.Ui</AssemblyName>
     <RootNamespace>MdReader.Ui</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- WebView/NativeMethods.cs uses [LibraryImport] and [UnmanagedCallersOnly]; both need unsafe blocks. -->
+    <ApplicationIcon>Assets\MdReader.ico</ApplicationIcon>
+    <!-- Interop/NativeMethods.cs and WebView/NativeMethods.cs use [LibraryImport] and [UnmanagedCallersOnly]. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <!-- AVLN3001: the main window has no parameterless constructor because it is only ever built by the composition
+         root, exactly as in the WPF shell. Nothing loads its XAML through the runtime loader. -->
+    <NoWarn>$(NoWarn);AVLN3001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,12 +22,21 @@
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Microsoft.Web.WebView2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\MdReader.Core\MdReader.Core.csproj" />
     <ProjectReference Include="..\MdReader.Shell\MdReader.Shell.csproj" />
     <ProjectReference Include="..\MdReader.Edge\MdReader.Edge.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MdReader.Ui.Tests" />
   </ItemGroup>
 
   <ItemGroup>

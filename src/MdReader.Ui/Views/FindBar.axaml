@@ -1,0 +1,66 @@
+<!-- Find bar (ARCHITECTURE §4.12): native WebView2 Find API driven from Avalonia. Docked above the web view because
+     Avalonia content can't be drawn over the native child window that hosts it (airspace). Brush keys come from
+     Themes/Palette.axaml (§10). -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
+             x:Class="MdReader.Ui.Views.FindBar"
+             automation:AutomationProperties.AutomationId="FindBar"
+             automation:AutomationProperties.Name="Find in document"
+             IsVisible="False"
+             Focusable="False">
+
+  <Border Background="{DynamicResource Brush.FindBar.Background}"
+          BorderBrush="{DynamicResource Brush.Border}"
+          BorderThickness="0,0,0,1"
+          Padding="12,6">
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+      <Panel Width="280" Height="28">
+        <TextBox Name="FindTextBox"
+                 automation:AutomationProperties.AutomationId="FindTextBox"
+                 automation:AutomationProperties.Name="Find in document"
+                 Background="{DynamicResource Brush.Document.Background}"
+                 BorderBrush="{DynamicResource Brush.Border}"
+                 BorderThickness="1"
+                 CornerRadius="4"
+                 Foreground="{DynamicResource Brush.Foreground}"
+                 CaretBrush="{DynamicResource Brush.Foreground}"
+                 SelectionBrush="{DynamicResource Brush.Accent}"
+                 VerticalContentAlignment="Center"
+                 Padding="4,0,64,0"
+                 MaxLength="1000"
+                 FontSize="{StaticResource FontSize.Body}" />
+        <TextBlock Name="FindMatchCount"
+                   automation:AutomationProperties.AutomationId="FindMatchCount"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Center"
+                   Margin="0,0,8,0"
+                   FontSize="{StaticResource FontSize.Caption}"
+                   Foreground="{DynamicResource Brush.Foreground.Muted}"
+                   IsHitTestVisible="False" />
+      </Panel>
+      <Button Name="FindPreviousButton"
+              Theme="{StaticResource FindBarIconButton}"
+              Margin="6,0,0,0"
+              automation:AutomationProperties.AutomationId="FindPreviousButton"
+              automation:AutomationProperties.Name="Previous match"
+              ToolTip.Tip="Previous match (Shift+F3)"
+              Content="&#xE70E;"
+              Click="OnPreviousClick" />
+      <Button Name="FindNextButton"
+              Theme="{StaticResource FindBarIconButton}"
+              automation:AutomationProperties.AutomationId="FindNextButton"
+              automation:AutomationProperties.Name="Next match"
+              ToolTip.Tip="Next match (F3)"
+              Content="&#xE70D;"
+              Click="OnNextClick" />
+      <Button Name="FindCloseButton"
+              Theme="{StaticResource FindBarIconButton}"
+              automation:AutomationProperties.AutomationId="FindCloseButton"
+              automation:AutomationProperties.Name="Close find"
+              ToolTip.Tip="Close (Esc)"
+              Content="&#xE711;"
+              Click="OnCloseClick" />
+    </StackPanel>
+  </Border>
+</UserControl>

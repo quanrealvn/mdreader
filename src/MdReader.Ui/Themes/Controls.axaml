@@ -1,0 +1,305 @@
+<!--
+  Shared control themes for the Avalonia chrome. The WPF shell's Themes/Controls.xaml is the reference; the visuals are
+  the same, expressed with Avalonia selectors instead of WPF triggers. Colours come only from Themes/Palette.axaml via
+  DynamicResource, so a theme variant change repaints everything.
+
+  Keys other views use:
+    IconButton, IconToggleButton, TextButton, AccentButton, SubtleButton, TabCloseButton, TabScrollButton, TabItem,
+    FindBarIconButton, IconText, MenuIcon, ToolbarSeparator
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+  <!-- ===== Typography ===== -->
+  <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI</FontFamily>
+  <FontFamily x:Key="Font.Display">Segoe UI Variable Display, Segoe UI</FontFamily>
+  <FontFamily x:Key="Font.Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+  <sys:Double x:Key="FontSize.Body">13</sys:Double>
+  <sys:Double x:Key="FontSize.Caption">12</sys:Double>
+  <sys:Double x:Key="FontSize.Icon">16</sys:Double>
+  <CornerRadius x:Key="Radius.Control">4</CornerRadius>
+  <CornerRadius x:Key="Radius.Overlay">8</CornerRadius>
+
+  <ControlTheme x:Key="IconText" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource Font.Icons}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSize.Icon}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </ControlTheme>
+
+  <ControlTheme x:Key="MenuIcon" TargetType="TextBlock" BasedOn="{StaticResource IconText}">
+    <Setter Property="FontSize" Value="14" />
+  </ControlTheme>
+
+  <ControlTheme x:Key="ToolbarSeparator" TargetType="Border">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Margin" Value="5,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Background" Value="{DynamicResource Brush.Border}" />
+  </ControlTheme>
+
+  <!-- ===== Buttons ===== -->
+
+  <!-- Transparent chrome button for icon glyphs (toolbar). Content = a glyph string rendered with Font.Icons. -->
+  <ControlTheme x:Key="IconButton" TargetType="Button">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Margin" Value="1,0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground}" />
+    <Setter Property="FontFamily" Value="{StaticResource Font.Icons}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSize.Icon}" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="Bd" Background="{TemplateBinding Background}" CornerRadius="{StaticResource Radius.Control}">
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            Padding="{TemplateBinding Padding}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover.Background}" />
+    </Style>
+    <Style Selector="^:pressed /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed.Background}" />
+      <Setter Property="Opacity" Value="0.8" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground.Disabled}" />
+    </Style>
+  </ControlTheme>
+
+  <!-- Toggle variant: checked = tinted accent background + accent glyph. -->
+  <ControlTheme x:Key="IconToggleButton" TargetType="ToggleButton">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Margin" Value="1,0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground}" />
+    <Setter Property="FontFamily" Value="{StaticResource Font.Icons}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSize.Icon}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="Bd" Background="{TemplateBinding Background}" CornerRadius="{StaticResource Radius.Control}">
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            Padding="{TemplateBinding Padding}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:checked /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.Checked.Background}" />
+    </Style>
+    <Style Selector="^:checked">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
+    </Style>
+    <Style Selector="^:pointerover:unchecked /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover.Background}" />
+    </Style>
+    <Style Selector="^:pressed /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed.Background}" />
+      <Setter Property="Opacity" Value="0.8" />
+    </Style>
+    <!-- Last, so a disabled toggle never shows the checked tint. -->
+    <Style Selector="^:disabled /template/ Border#Bd">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground.Disabled}" />
+    </Style>
+  </ControlTheme>
+
+  <!-- Same chrome as IconButton, but for short text (the zoom percentage). -->
+  <ControlTheme x:Key="TextButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+    <Setter Property="Width" Value="NaN" />
+    <Setter Property="MinWidth" Value="48" />
+    <Setter Property="Padding" Value="6,0" />
+    <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSize.Caption}" />
+  </ControlTheme>
+
+  <!-- Primary call to action (empty state). -->
+  <ControlTheme x:Key="AccentButton" TargetType="Button">
+    <Setter Property="Background" Value="{DynamicResource Brush.Accent.Emphasis}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Foreground}" />
+    <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Padding" Value="16,7,18,8" />
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6">
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            Padding="{TemplateBinding Padding}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Accent.Emphasis.Hover}" />
+    </Style>
+    <Style Selector="^:pressed /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Accent.Emphasis.Pressed}" />
+    </Style>
+    <Style Selector="^:disabled /template/ Border#Bd">
+      <Setter Property="Opacity" Value="0.5" />
+    </Style>
+  </ControlTheme>
+
+  <!-- Flat, full-width list row (recent files). -->
+  <ControlTheme x:Key="SubtleButton" TargetType="Button">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground}" />
+    <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{StaticResource FontSize.Body}" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6">
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            Padding="{TemplateBinding Padding}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="Center" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover.Background}" />
+    </Style>
+    <Style Selector="^:pressed /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.Pressed.Background}" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="TabCloseButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+    <Setter Property="Width" Value="22" />
+    <Setter Property="Height" Value="22" />
+    <Setter Property="Margin" Value="4,0,0,0" />
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground.Muted}" />
+    <Setter Property="Focusable" Value="False" />
+  </ControlTheme>
+
+  <!-- Scroll buttons shown at the tab strip edges when the tabs overflow. -->
+  <ControlTheme x:Key="TabScrollButton" TargetType="RepeatButton">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="Margin" Value="0,8,0,0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="FontFamily" Value="{StaticResource Font.Icons}" />
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground.Muted}" />
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="Delay" Value="250" />
+    <Setter Property="Interval" Value="30" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="Bd" Background="{TemplateBinding Background}" CornerRadius="{StaticResource Radius.Control}">
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Content="{TemplateBinding Content}"
+                            Foreground="{TemplateBinding Foreground}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.Hover.Background}" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground.Disabled}" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="FindBarIconButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Margin" Value="2,0,0,0" />
+  </ControlTheme>
+
+  <!--
+    One tab. Active tab: document background, hairline border on top/left/right, rounded top corners, and it extends to the
+    bottom of the chrome row so it covers the row's bottom border (merged with the document). Inactive: muted text, floating
+    rounded hover pill.
+  -->
+  <ControlTheme x:Key="TabItem" TargetType="ListBoxItem">
+    <Setter Property="MinWidth" Value="120" />
+    <Setter Property="MaxWidth" Value="240" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Margin" Value="0,8,1,0" />
+    <Setter Property="Padding" Value="12,0,5,0" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="FontSize" Value="{StaticResource FontSize.Body}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground.Muted}" />
+    <Setter Property="ToolTip.Tip" Value="{Binding ToolTip}" />
+    <Setter Property="ToolTip.ShowDelay" Value="700" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Grid>
+          <Border Name="Hover" Margin="1,1,1,5" CornerRadius="6" Background="Transparent" />
+          <Border Name="Bd" CornerRadius="8,8,0,0" BorderThickness="1,1,1,0" BorderBrush="Transparent" Background="Transparent" />
+          <Grid Margin="{TemplateBinding Padding}" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+            <TextBlock Name="DocGlyph" Grid.Column="0" Theme="{StaticResource IconText}" FontSize="12"
+                       Text="&#xE8A5;" Margin="0,0,8,0" Foreground="{TemplateBinding Foreground}" />
+            <TextBlock Grid.Column="1" Text="{Binding Header}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                       Foreground="{TemplateBinding Foreground}" />
+            <TextBlock Name="DirtyGlyph" Grid.Column="2" FontSize="16" Text="&#x25CF;" Margin="6,0,0,0" VerticalAlignment="Center"
+                       Foreground="{DynamicResource Brush.Accent}" IsVisible="{Binding IsDirty}"
+                       ToolTip.Tip="Unsaved changes" />
+            <TextBlock Name="DeletedGlyph" Grid.Column="3" Theme="{StaticResource IconText}" FontSize="12" Text="&#xE7BA;"
+                       Margin="6,0,0,0" Foreground="{DynamicResource Brush.Warning}" IsVisible="{Binding IsDeleted}"
+                       ToolTip.Tip="The file was deleted or moved" />
+            <Button Name="CloseButton" Grid.Column="4" Theme="{StaticResource TabCloseButton}" Content="&#xE711;"
+                    Command="{Binding CloseCommand}" ToolTip.Tip="Close tab" />
+          </Grid>
+        </Grid>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover /template/ Border#Hover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Tab.Hover.Background}" />
+    </Style>
+    <Style Selector="^:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground}" />
+    </Style>
+    <Style Selector="^:selected /template/ Border#Hover">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="^:selected /template/ Border#Bd">
+      <Setter Property="Background" Value="{DynamicResource Brush.Tab.Active.Background}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+    </Style>
+    <Style Selector="^:selected /template/ TextBlock#DocGlyph">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
+    </Style>
+    <Style Selector="^:selected">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Foreground}" />
+      <Setter Property="ZIndex" Value="1" />
+    </Style>
+  </ControlTheme>
+
+</ResourceDictionary>

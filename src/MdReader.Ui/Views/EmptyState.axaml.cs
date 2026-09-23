@@ -1,0 +1,12 @@
+using Avalonia.Controls;
+
+namespace MdReader.Ui.Views;
+
+/// Placeholder shown while no document is open. All behavior is bound to MainViewModel commands.
+public partial class EmptyState : UserControl
+{
+    public EmptyState()
+    {
+        InitializeComponent();
+    }
+}

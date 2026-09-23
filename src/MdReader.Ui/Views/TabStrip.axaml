@@ -1,0 +1,40 @@
+<!--
+  Document tabs (§4.11): a ListBox over MainViewModel.Tabs, horizontally scrollable with edge scroll buttons when the
+  tabs overflow. DataContext = MainViewModel (inherited from MainWindow). Tab visuals live in Themes/Controls.axaml.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
+             x:Class="MdReader.Ui.Views.TabStrip"
+             Focusable="False">
+  <Grid ColumnDefinitions="Auto,*,Auto">
+    <RepeatButton Name="ScrollLeftButton" Grid.Column="0" Theme="{StaticResource TabScrollButton}" Content="&#xE76B;"
+                  IsVisible="False" Click="OnScrollLeft"
+                  automation:AutomationProperties.Name="Scroll tabs left" />
+
+    <ListBox Name="TabList"
+             Grid.Column="1"
+             automation:AutomationProperties.AutomationId="TabStrip"
+             automation:AutomationProperties.Name="Open documents"
+             ItemsSource="{Binding Tabs}"
+             SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
+             ItemContainerTheme="{StaticResource TabItem}"
+             SelectionMode="Single"
+             Background="Transparent"
+             BorderThickness="0"
+             Padding="0"
+             Focusable="False"
+             ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+             ScrollViewer.VerticalScrollBarVisibility="Disabled">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Orientation="Horizontal" />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+    </ListBox>
+
+    <RepeatButton Name="ScrollRightButton" Grid.Column="2" Theme="{StaticResource TabScrollButton}" Content="&#xE76C;"
+                  IsVisible="False" Click="OnScrollRight"
+                  automation:AutomationProperties.Name="Scroll tabs right" />
+  </Grid>
+</UserControl>

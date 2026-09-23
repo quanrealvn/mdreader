@@ -1,0 +1,168 @@
+<!--
+  Main window (§4.11). Row 0: compact 40 px chrome — tab strip on the left, toolbar on the right. Row 1: DocumentHost
+  (one WebView2 per tab) with EmptyState on top when no tab is open. The status toast is a Popup (its own window)
+  because Avalonia content can't be drawn over the native child window the web view lives in (airspace).
+  DataContext = MainViewModel. Keyboard shortcuts: Commands/AvaloniaShortcutRouter (tunnelling router, no KeyBindings).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:MdReader.Ui.Views"
+        xmlns:cmd="clr-namespace:MdReader.Shell.Commands;assembly=MdReader.Shell"
+        xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
+        x:Class="MdReader.Ui.Views.MainWindow"
+        Title="{Binding WindowTitle}"
+        automation:AutomationProperties.AutomationId="MainWindow"
+        MinWidth="560" MinHeight="360"
+        Background="{DynamicResource Brush.Chrome.Background}"
+        Foreground="{DynamicResource Brush.Foreground}"
+        FontFamily="{StaticResource Font.Ui}"
+        FontSize="{StaticResource FontSize.Body}"
+        UseLayoutRounding="True"
+        DragDrop.AllowDrop="True">
+
+  <Grid RowDefinitions="40,*">
+
+    <!-- Chrome hairline; drawn first so the active tab (document background) covers it and merges with the document. -->
+    <Border Grid.Row="0" Height="1" VerticalAlignment="Bottom" Background="{DynamicResource Brush.Border}" />
+
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+
+      <views:TabStrip Grid.Column="0" Margin="6,0,8,0" />
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,1"
+                  automation:AutomationProperties.Name="Toolbar">
+        <Button Name="OpenButton" Theme="{StaticResource IconButton}" Content="&#xED25;"
+                Command="{Binding OpenCommand}"
+                automation:AutomationProperties.AutomationId="OpenButton" automation:AutomationProperties.Name="Open"
+                ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[OpenButton]}" />
+        <Button Name="RecentButton" Theme="{StaticResource IconButton}" Width="NaN" Padding="8,0,6,0"
+                Click="OnRecentButtonClick"
+                automation:AutomationProperties.AutomationId="RecentButton" automation:AutomationProperties.Name="Recent files"
+                ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[RecentButton]}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE81C;" VerticalAlignment="Center" />
+            <TextBlock Text="&#xE70D;" FontSize="8" Margin="5,2,0,0" VerticalAlignment="Center" Opacity="0.75" />
+          </StackPanel>
+        </Button>
+
+        <Border Theme="{StaticResource ToolbarSeparator}" />
+
+        <ToggleButton Name="TocToggleButton" Theme="{StaticResource IconToggleButton}" Content="&#xE8FD;"
+                      IsChecked="{Binding IsTocVisible, Mode=TwoWay}" IsEnabled="{Binding HasTabs}"
+                      automation:AutomationProperties.AutomationId="TocToggleButton"
+                      automation:AutomationProperties.Name="Table of contents"
+                      ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[TocToggleButton]}" />
+        <Button Name="FindButton" Theme="{StaticResource IconButton}" Content="&#xE721;"
+                Command="{Binding FindCommand}"
+                automation:AutomationProperties.AutomationId="FindButton" automation:AutomationProperties.Name="Find"
+                ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[FindButton]}" />
+        <Button Name="ExportPdfButton" Theme="{StaticResource IconButton}" Content="&#xEA90;"
+                Command="{Binding ExportPdfCommand}"
+                automation:AutomationProperties.AutomationId="ExportPdfButton" automation:AutomationProperties.Name="Export PDF"
+                ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[ExportPdfButton]}" />
+        <ToggleButton Name="SplitViewButton" Theme="{StaticResource IconToggleButton}" Content="&#xE745;"
+                      IsChecked="{Binding IsSplitView, Mode=TwoWay}" IsEnabled="{Binding HasTabs}"
+                      automation:AutomationProperties.AutomationId="SplitViewButton"
+                      automation:AutomationProperties.Name="Split view"
+                      ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[SplitViewButton]}" />
+        <Button Name="ThemeButton" Theme="{StaticResource IconButton}" Content="{Binding ThemeGlyph}"
+                Command="{Binding CycleThemeCommand}"
+                automation:AutomationProperties.AutomationId="ThemeButton" automation:AutomationProperties.Name="Theme"
+                automation:AutomationProperties.HelpText="{Binding ThemeDescription}"
+                ToolTip.Tip="{Binding ThemeToolTip}" />
+
+        <Border Theme="{StaticResource ToolbarSeparator}" />
+
+        <Button Name="ZoomOutButton" Theme="{StaticResource IconButton}" Content="&#xE738;" FontSize="13"
+                Command="{Binding ZoomOutCommand}"
+                automation:AutomationProperties.AutomationId="ZoomOutButton" automation:AutomationProperties.Name="Zoom out"
+                ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[ZoomOutButton]}" />
+        <Button Name="ZoomResetButton" Theme="{StaticResource TextButton}" Content="{Binding ZoomText}"
+                Command="{Binding ZoomResetCommand}"
+                automation:AutomationProperties.AutomationId="ZoomResetButton"
+                automation:AutomationProperties.Name="{Binding ZoomText}"
+                ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[ZoomResetButton]}" />
+        <Button Name="ZoomInButton" Theme="{StaticResource IconButton}" Content="&#xE710;" FontSize="13"
+                Command="{Binding ZoomInCommand}"
+                automation:AutomationProperties.AutomationId="ZoomInButton" automation:AutomationProperties.Name="Zoom in"
+                ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[ZoomInButton]}" />
+
+        <Border Theme="{StaticResource ToolbarSeparator}" />
+
+        <Button Name="MoreButton" Theme="{StaticResource IconButton}" Content="&#xE712;"
+                automation:AutomationProperties.AutomationId="MoreButton" automation:AutomationProperties.Name="More options"
+                ToolTip.Tip="{Binding Source={x:Static cmd:KeyboardShortcuts.ToolTips}, Path=[MoreButton]}">
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight">
+              <MenuItem Header="_Save" Command="{Binding SaveCommand}"
+                        automation:AutomationProperties.AutomationId="SaveMenuItem"
+                        InputGesture="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[SaveMenuItem]}">
+                <MenuItem.Icon>
+                  <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE74E;" />
+                </MenuItem.Icon>
+              </MenuItem>
+              <MenuItem Header="_Reload" Command="{Binding ReloadCommand}"
+                        automation:AutomationProperties.AutomationId="ReloadMenuItem"
+                        InputGesture="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[ReloadMenuItem]}">
+                <MenuItem.Icon>
+                  <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE72C;" />
+                </MenuItem.Icon>
+              </MenuItem>
+              <MenuItem Header="_Print…" Command="{Binding PrintCommand}"
+                        automation:AutomationProperties.AutomationId="PrintMenuItem"
+                        InputGesture="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[PrintMenuItem]}">
+                <MenuItem.Icon>
+                  <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE749;" />
+                </MenuItem.Icon>
+              </MenuItem>
+              <MenuItem Header="_Export as PDF…" Command="{Binding ExportPdfCommand}"
+                        automation:AutomationProperties.AutomationId="ExportPdfMenuItem"
+                        InputGesture="{Binding Source={x:Static cmd:KeyboardShortcuts.MenuGestures}, Path=[ExportPdfMenuItem]}">
+                <MenuItem.Icon>
+                  <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xEA90;" />
+                </MenuItem.Icon>
+              </MenuItem>
+              <Separator />
+              <MenuItem Header="_About MdReader" Click="OnAboutClick"
+                        automation:AutomationProperties.AutomationId="AboutMenuItem">
+                <MenuItem.Icon>
+                  <TextBlock Theme="{StaticResource MenuIcon}" Text="&#xE946;" />
+                </MenuItem.Icon>
+              </MenuItem>
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+      </StackPanel>
+    </Grid>
+
+    <Panel Name="DocumentArea" Grid.Row="1" Background="{DynamicResource Brush.Document.Background}">
+      <views:DocumentHost Name="DocumentHostControl" Tabs="{Binding Tabs}"
+                          automation:AutomationProperties.AutomationId="DocumentHost" />
+      <!-- EmptyState is created on first need (no tabs) by MainWindow.axaml.cs, so a launch that opens documents
+           never builds it (startup cost). -->
+      <ContentControl Name="EmptyStateHost" Focusable="False" IsVisible="False"
+                      HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+
+      <!-- Zero-size anchor at the bottom-left corner; the status toast opens just above it. -->
+      <Panel Name="StatusAnchor" Width="0" Height="0" Margin="14,0,0,14"
+             HorizontalAlignment="Left" VerticalAlignment="Bottom" />
+
+      <Popup Name="StatusPopup" PlacementTarget="{Binding #StatusAnchor}" Placement="TopEdgeAlignedLeft"
+             IsLightDismissEnabled="False">
+        <Border Margin="4,6,8,10" CornerRadius="6" Background="{DynamicResource Brush.Toast.Background}"
+                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" Padding="12,8,14,9" MaxWidth="560"
+                PointerReleased="OnStatusClicked" Cursor="Hand"
+                BoxShadow="0 2 10 0 #38000000">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Theme="{StaticResource IconText}" FontSize="14" Text="&#xE946;" Margin="0,1,10,0"
+                       VerticalAlignment="Top" Foreground="{DynamicResource Brush.Toast.Foreground}" Opacity="0.85" />
+            <TextBlock Name="StatusText" Text="{Binding StatusText}" TextWrapping="Wrap" MaxWidth="500"
+                       Foreground="{DynamicResource Brush.Toast.Foreground}" FontSize="13"
+                       automation:AutomationProperties.AutomationId="StatusText"
+                       automation:AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+        </Border>
+      </Popup>
+    </Panel>
+  </Grid>
+</Window>
