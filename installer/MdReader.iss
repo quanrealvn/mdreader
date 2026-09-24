@@ -9,6 +9,9 @@
 ;     RegisteredApplications) and only offers to open Settings > Default apps.
 ;   * Uninstall removes exactly what Setup added. Shared keys (.md, .markdown, ..., Applications, App Paths,
 ;     RegisteredApplications) only lose our value/subkey; they're deleted only when Setup created them and they're empty.
+;   * An update is an update, not a second product: same AppId, same install folder, same shortcut, same uninstall
+;     entry, same registration. The previous payload in {app} is cleared out first ([InstallDelete]) so no assembly
+;     from an older release is left behind, and user data is never part of that.
 
 #if Ver < EncodeVer(6, 6, 0)
   #error Inno Setup 6.6 or later is required (WizardStyle=modern dynamic)
@@ -68,7 +71,7 @@ CloseApplications=yes
 SetupMutex=MdReaderSetup-5FBD80EA-E813-46B4-8272-473A2D40CEB7
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-SetupIconFile={#RepoRoot}\src\MdReader.App\Assets\MdReader.ico
+SetupIconFile={#RepoRoot}\src\MdReader.Ui\Assets\MdReader.ico
 WizardStyle=modern dynamic
 ; Generated from the app icon by assets\New-WizardImages.ps1; Setup picks the size that fits the DPI.
 WizardImageFile=assets\wizard-light-*.png
@@ -86,6 +89,26 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[InstallDelete]
+; An update lays the whole payload down again, but it can't overwrite what the new payload doesn't contain. Going from
+; 1.3.x (WPF) to 1.4 (Avalonia) swaps one UI stack for another: 56 files of the old payload, 18 of them WPF assemblies,
+; have no counterpart in the new one. They would sit in the install folder forever, be loaded by nothing and still be
+; listed in the uninstall log; the same goes for a web\ file a later release drops. So the old payload is removed
+; first and then written fresh.
+; Only files this installer put there are named. unins000.* (the uninstaller and the uninstall log an upgrade appends
+; to) is left alone, and so is everything under %APPDATA%\MdReader and %LOCALAPPDATA%\MdReader. HasPreviousPayload
+; keeps this to folders that really hold a previous MdReader, so a first install - or a folder the user picked that
+; holds something else - is never touched.
+Type: filesandordirs; Name: "{app}\web"; Check: HasPreviousPayload
+Type: filesandordirs; Name: "{app}\runtimes"; Check: HasPreviousPayload
+Type: files; Name: "{app}\*.dll"; Check: HasPreviousPayload
+Type: files; Name: "{app}\*.json"; Check: HasPreviousPayload
+Type: files; Name: "{app}\*.pdb"; Check: HasPreviousPayload
+Type: files; Name: "{app}\*.xml"; Check: HasPreviousPayload
+Type: files; Name: "{app}\{#MyAppExeName}"; Check: HasPreviousPayload
+Type: files; Name: "{app}\createdump.exe"; Check: HasPreviousPayload
+Type: files; Name: "{app}\THIRD-PARTY-NOTICES.md"; Check: HasPreviousPayload
 
 [Files]
 ; The whole self-contained publish folder: exe, runtime, WebView2Loader.dll (root and runtimes\win-x64\native), web\.
@@ -168,6 +191,29 @@ var
   WebView2Page: TOutputMsgWizardPage;
   SeenKeys: TStringList;
   NewKeys: TStringList;
+  PayloadChecked: Boolean;
+  PayloadFound: Boolean;
+
+{ ---------- Files: is there a previous payload in the app folder to clear out? ---------- }
+
+{ Answered once, before [InstallDelete] removes anything: the later entries ask after MdReader.exe is already gone. }
+function HasPreviousPayload(): Boolean;
+var
+  AppDir: String;
+begin
+  if not PayloadChecked then
+  begin
+    PayloadChecked := True;
+    AppDir := ExpandConstant('{app}');
+    PayloadFound := FileExists(AddBackslash(AppDir) + AppExeName) or
+                    FileExists(AddBackslash(AppDir) + 'unins000.dat');
+    if PayloadFound then
+      Log('A previous MdReader payload is in ' + AppDir + ': it is removed before the new files are written.')
+    else
+      Log('No previous MdReader payload in ' + AppDir + ': nothing to remove.');
+  end;
+  Result := PayloadFound;
+end;
 
 { ---------- Registry: remember which shared parent keys Setup creates ---------- }
 

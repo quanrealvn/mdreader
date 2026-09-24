@@ -22,8 +22,8 @@
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
-        <ResourceInclude Source="avares://MdReader.Ui/Themes/Palette.axaml" />
-        <ResourceInclude Source="avares://MdReader.Ui/Themes/Controls.axaml" />
+        <ResourceInclude Source="avares://MdReader/Themes/Palette.axaml" />
+        <ResourceInclude Source="avares://MdReader/Themes/Controls.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>

@@ -6,7 +6,11 @@
          plain net10.0 build is the macOS one, on the WKWebView backend. Everything that differs is either behind a
          seam or under Platform\Windows and Platform\Mac, which are swapped below. -->
     <TargetFrameworks>net10.0-windows;net10.0</TargetFrameworks>
-    <AssemblyName>MdReader.Ui</AssemblyName>
+    <!-- This is the shell that ships (ARCHITECTURE §12), so the exe keeps the name the installed app has always had:
+         the file association's open command, the Start menu and pinned shortcuts, App Paths and the VS Code extension
+         all name MdReader.exe, and an update has to leave every one of them working. The assembly name is also the
+         root of avares:// URIs, which is why those read avares://MdReader/. The namespace stays MdReader.Ui. -->
+    <AssemblyName>MdReader</AssemblyName>
     <RootNamespace>MdReader.Ui</RootNamespace>
     <!-- Interop/NativeMethods.cs, WebView/NativeMethods.cs and Platform\Mac use [LibraryImport]. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

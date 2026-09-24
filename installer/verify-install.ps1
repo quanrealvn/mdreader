@@ -2,8 +2,8 @@
 .SYNOPSIS
     End-to-end check of installer\output\MdReader-Setup.exe on this machine: silent per-user install into a temp folder,
     verification of every file and registry value (docs/ARCHITECTURE.md section 12), launches of the installed app,
-    reinstall over a running copy, silent uninstall while a copy is running, and verification that everything Setup added
-    is gone while shared keys are untouched.
+    reinstall over a running copy (including that the previous payload is cleared out instead of merged with), silent
+    uninstall while a copy is running, and verification that everything Setup added is gone while shared keys are untouched.
 
 .DESCRIPTION
     Uses the real per-user registry (HKCU), the real Start menu, and the real "Apps" list entry, because that's what the
@@ -23,6 +23,9 @@
 .PARAMETER KeepTemp
     Keep the temp folder (logs, captures, profiles) even when every check passes.
 
+.PARAMETER Wpf
+    Expect the payload of a comparison build (installer\build.ps1 -Wpf) instead of the shipped Avalonia shell.
+
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File installer\verify-install.ps1
 #>
@@ -30,7 +33,8 @@
 param(
     [string]$Setup,
     [string]$Document,
-    [switch]$KeepTemp
+    [switch]$KeepTemp,
+    [switch]$Wpf
 )
 
 Set-StrictMode -Version 2.0
@@ -299,7 +303,11 @@ function Assert-Installation([string]$Phase, [string]$AppDir, [string]$ExpectedV
     $exe = Join-Path $AppDir $ExeName
 
     # Files
-    $required = @($ExeName, 'MdReader.dll', 'web\index.html', 'web\vendor\mermaid\mermaid.min.js', 'THIRD-PARTY-NOTICES.md', 'unins000.exe', 'unins000.dat')
+    $required = @($ExeName, 'MdReader.dll', 'MdReader.Core.dll', 'MdReader.Shell.dll', 'web\index.html',
+                  'web\vendor\mermaid\mermaid.min.js', 'THIRD-PARTY-NOTICES.md', 'unins000.exe', 'unins000.dat')
+    # The shell's own drawing stack: WPF, or Avalonia with the Skia and ANGLE natives it needs to open a window.
+    if ($Wpf) { $required += 'PresentationFramework.dll', 'PresentationCore.dll' }
+    else { $required += 'Avalonia.Base.dll', 'Avalonia.Win32.dll', 'libSkiaSharp.dll', 'av_libglesv2.dll' }
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $AppDir $_) -PathType Leaf) })
     Add-Result $Phase 'Key files installed' ($missing.Count -eq 0) $(if ($missing.Count) { "missing: $($missing -join ', ')" } else { ($required -join ', ') })
     $loader = @('WebView2Loader.dll', 'runtimes\win-x64\native\WebView2Loader.dll' | Where-Object { Test-Path -LiteralPath (Join-Path $AppDir $_) -PathType Leaf })
@@ -308,8 +316,10 @@ function Assert-Installation([string]$Phase, [string]$AppDir, [string]$ExpectedV
     if (Test-Path -LiteralPath (Join-Path $PublishDir $ExeName)) {
         $published = @(Get-ChildItem -LiteralPath $PublishDir -Recurse -File)
         $bad = New-Object System.Collections.Generic.List[string]
+        $expectedFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
         foreach ($file in $published) {
             $relative = $file.FullName.Substring($PublishDir.Length).TrimStart('\')
+            [void]$expectedFiles.Add($relative)
             $target = Join-Path $AppDir $relative
             if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { $bad.Add("missing $relative") }
             elseif ((Get-Item -LiteralPath $target).Length -ne $file.Length) { $bad.Add("size differs: $relative") }
@@ -317,9 +327,19 @@ function Assert-Installation([string]$Phase, [string]$AppDir, [string]$ExpectedV
         $sameExe = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath (Join-Path $PublishDir $ExeName) -Algorithm SHA256).Hash
         if (-not $sameExe) { $bad.Add('MdReader.exe hash differs from the publish folder') }
         Add-Result $Phase 'Install folder matches the publish folder' ($bad.Count -eq 0) $(if ($bad.Count) { ($bad | Select-Object -First 5) -join '; ' } else { "$($published.Count) files, sizes equal, exe SHA-256 equal" })
+
+        # The other direction: an update replaces the payload instead of merging with it, so nothing an earlier release
+        # left behind may still be there. Only the notices file and Inno's own uninstaller aren't in the publish folder.
+        [void]$expectedFiles.Add('THIRD-PARTY-NOTICES.md')
+        $extra = @(Get-ChildItem -LiteralPath $AppDir -Recurse -File |
+            ForEach-Object { $_.FullName.Substring($AppDir.Length).TrimStart('\') } |
+            Where-Object { -not $expectedFiles.Contains($_) -and $_ -notlike 'unins???.*' })
+        Add-Result $Phase 'No files besides the payload (nothing from an earlier version)' ($extra.Count -eq 0) `
+            $(if ($extra.Count) { "left over: $(($extra | Select-Object -First 5) -join ', ')" } else { 'only the publish folder, the notices file and unins000.*' })
     }
     else {
         Add-Result $Phase 'Install folder matches the publish folder' $true "skipped: $PublishDir not found"
+        Add-Result $Phase 'No files besides the payload (nothing from an earlier version)' $true "skipped: $PublishDir not found"
     }
 
     # Registry values
@@ -490,6 +510,15 @@ try {
     Write-Phase 'Reinstall while MdReader is running (Restart Manager must close it)'
     $running = Start-RunningCopy (Join-Path $appDir $ExeName) 'upgrade'
     Add-Result 'reinstall' 'Installed app started (window shown)' (-not $running.HasExited) "PID $($running.Id)"
+
+    # Stand in for what an older release left in the folder: a root assembly and a web\ file the new payload doesn't
+    # contain. [InstallDelete] has to clear both, otherwise 1.3's WPF assemblies would live on after an update.
+    $stale = @('LeftOverFromAnEarlierVersion.dll', 'web\left-over-from-an-earlier-version.js')
+    foreach ($relative in $stale) {
+        $target = Join-Path $appDir $relative
+        Set-Content -LiteralPath $target -Value 'left over from an earlier version' -Encoding ASCII
+    }
+
     $reinstallLog = Join-Path $TempRoot 'setup-reinstall.log'
     # /NORESTARTAPPLICATIONS: Restart Manager must never relaunch MdReader without the isolation arguments.
     $null = Invoke-Setup 'reinstall' 'Silent reinstall exit code 0' $reinstallLog '/NORESTARTAPPLICATIONS'
@@ -502,6 +531,9 @@ try {
     else { Add-Result 'reinstall' 'App exited cleanly on Restart Manager shutdown' $true 'exit code 0' }
     Test-LogLine 'reinstall' 'Restart Manager detected the running app' $reinstallLog 'RestartManager found an application using one of our files'
     Test-LogLine 'reinstall' 'Uninstall log appended (upgrade keeps one uninstaller)' $reinstallLog 'Will append to existing uninstall log'
+    $staleLeft = @($stale | Where-Object { Test-Path -LiteralPath (Join-Path $appDir $_) })
+    Add-Result 'reinstall' 'Previous payload cleared out ([InstallDelete])' ($staleLeft.Count -eq 0) `
+        $(if ($staleLeft.Count) { "still there: $($staleLeft -join ', ')" } else { "$($stale.Count) planted files gone" })
     Assert-Installation 'reinstall' $appDir $ExpectedVersion $UninstallKey
 
     # ------------------------------------------------------------ uninstall while running

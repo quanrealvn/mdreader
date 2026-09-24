@@ -202,6 +202,17 @@ function sendRendered(renderCtx, phase) {
   send({ type: "rendered", docId: renderCtx.docId, version: renderCtx.version, ms, phase });
 }
 
+// An enhancer resolves once it has written its markup, which is before the browser has the
+// web fonts that markup asks for: KaTeX lays math out in the fallback font and repaints when
+// KaTeX_Main and the rest arrive. Everything that acts on `enhanced` - print mode, --capture,
+// the UI tests - would otherwise catch the page a repaint too early. Already-loaded fonts
+// resolve on the spot, and a font that never loads must not hold the phase back, so a failure
+// here is the same as success.
+function fontsSettled() {
+  if (!document.fonts) return Promise.resolve();
+  return document.fonts.ready.then(() => undefined, () => undefined);
+}
+
 function runEnhancers(renderCtx, features) {
   if (!isCurrentRender(renderCtx)) return;
 
@@ -217,7 +228,8 @@ function runEnhancers(renderCtx, features) {
         log("warn", "enhancer failed: " + describeError(result.reason));
       }
     }
-    sendRendered(renderCtx, "enhanced");
+
+    fontsSettled().then(() => sendRendered(renderCtx, "enhanced"));
   });
 }
 
@@ -269,6 +281,9 @@ async function enterPrintMode() {
   printModeOn = true;
   htmlEl.setAttribute("data-print", "");
   await setDiagramTheme("light");
+  // Print CSS can ask for a face nothing on screen used yet; a PDF written before it arrives
+  // has the fallback font baked in and no second chance to repaint.
+  await fontsSettled();
   await nextFrame();
   send({ type: "printModeReady", enabled: true });
 }

@@ -6,8 +6,10 @@
     1. Locates dotnet (PATH, DOTNET_ROOT, Program Files) and ISCC.exe (ISCC env var, PATH, per-user and per-machine
        Inno Setup 6 folders, Inno Setup's uninstall registration).
     2. Unless -SkipTests: dotnet test tests\MdReader.Core.Tests -c Release.
-    3. Cleans artifacts\publish\win-x64 and publishes src\MdReader.App (Release, win-x64, self-contained, ReadyToRun).
-    4. Sanity-checks the publish folder (exe, runtime, web assets, WebView2Loader.dll, file version, ReadyToRun code).
+    3. Cleans artifacts\publish\win-x64 and publishes the shell (Release, win-x64, self-contained, ReadyToRun):
+       src\MdReader.Ui (Avalonia) by default, src\MdReader.App (WPF) with -Wpf. Both publish as MdReader.exe.
+    4. Sanity-checks the publish folder (exe, runtime, web assets, WebView2Loader.dll, file version, ReadyToRun code,
+       and the assemblies the chosen shell needs: Avalonia plus its Skia/HarfBuzz/ANGLE natives, or WPF).
     5. Compiles installer\MdReader.iss and prints the setup's size and SHA-256.
     Stops at the first failure with a message and a non-zero exit code. Windows PowerShell 5.1 compatible.
 
@@ -17,14 +19,20 @@
 .PARAMETER SkipTests
     Skip the Core unit tests.
 
+.PARAMETER Wpf
+    Build the installer around the WPF shell (src\MdReader.App) instead of the Avalonia one. The output path and file
+    name don't change, so the result is a drop-in comparison build, not a second product. Only for parity checks.
+
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
     powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1 -Version 1.0.1 -SkipTests
+    powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1 -Wpf -SkipTests
 #>
 [CmdletBinding()]
 param(
     [string]$Version,
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [switch]$Wpf
 )
 
 Set-StrictMode -Version 2.0
@@ -34,7 +42,14 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 
 $RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $PublishDir = Join-Path $RepoRoot 'artifacts\publish\win-x64'
-$AppProject = Join-Path $RepoRoot 'src\MdReader.App\MdReader.App.csproj'
+# The shipped shell is the Avalonia one; the WPF project stays in the repo as the parity reference and can still be
+# wrapped in an installer with -Wpf. Both projects publish as MdReader.exe, so everything downstream is identical.
+$ShellName = if ($Wpf) { 'WPF (src\MdReader.App)' } else { 'Avalonia (src\MdReader.Ui)' }
+$AppProject = if ($Wpf) { Join-Path $RepoRoot 'src\MdReader.App\MdReader.App.csproj' }
+              else { Join-Path $RepoRoot 'src\MdReader.Ui\MdReader.Ui.csproj' }
+# MdReader.Ui multi-targets (net10.0 is the macOS build), so the framework is named explicitly; MdReader.App has the
+# same one, which keeps the publish command the same for both.
+$TargetFramework = 'net10.0-windows'
 $TestProject = Join-Path $RepoRoot 'tests\MdReader.Core.Tests\MdReader.Core.Tests.csproj'
 $IssFile = Join-Path $PSScriptRoot 'MdReader.iss'
 $OutputDir = Join-Path $PSScriptRoot 'output'
@@ -176,19 +191,52 @@ function Test-ReadyToRun([string]$Path) {
     return ($nativeHeader -ge 0 -and [BitConverter]::ToUInt32($bytes, $nativeHeader) -eq 0x00525452)   # 'RTR'
 }
 
+# True when the file contains this ASCII text. Used to find an embedded resource name in an assembly without loading it.
+function Test-ContainsText([string]$Path, [string]$Text) {
+    $content = [IO.File]::ReadAllText($Path, [Text.Encoding]::ASCII)
+    return $content.Contains($Text)
+}
+
 function Assert-PublishOutput([string]$Folder, [string]$ExpectedVersion) {
     $required = @(
-        'MdReader.exe', 'MdReader.dll', 'MdReader.Core.dll', 'MdReader.runtimeconfig.json',
-        'coreclr.dll', 'hostfxr.dll', 'PresentationFramework.dll', 'Microsoft.Web.WebView2.Wpf.dll',
-        'Markdig.dll', 'HtmlSanitizer.dll',
+        'MdReader.exe', 'MdReader.dll', 'MdReader.Core.dll', 'MdReader.Shell.dll', 'MdReader.Edge.dll',
+        'MdReader.runtimeconfig.json', 'coreclr.dll', 'hostfxr.dll',
+        'Microsoft.Web.WebView2.Core.dll', 'Markdig.dll', 'HtmlSanitizer.dll',
         'web\index.html', 'web\vendor\mermaid\mermaid.min.js', 'web\vendor\katex\katex.min.js', 'web\vendor\highlight\highlight.min.js'
     )
+    if ($Wpf) {
+        # The WPF shell draws with the Windows Presentation Foundation assemblies and hosts WebView2 in its WPF wrapper.
+        $required += 'PresentationFramework.dll', 'PresentationCore.dll', 'Microsoft.Web.WebView2.Wpf.dll'
+    }
+    else {
+        # The Avalonia shell draws with Skia: the managed bindings and the three natives (Skia, HarfBuzz for text
+        # shaping, ANGLE for the GPU path) must all be beside the exe or the first window never appears.
+        $required += 'Avalonia.Base.dll', 'Avalonia.Controls.dll', 'Avalonia.Desktop.dll', 'Avalonia.Win32.dll',
+                     'Avalonia.Skia.dll', 'Avalonia.Themes.Fluent.dll', 'Avalonia.Markup.Xaml.dll',
+                     'SkiaSharp.dll', 'HarfBuzzSharp.dll',
+                     'libSkiaSharp.dll', 'libHarfBuzzSharp.dll', 'av_libglesv2.dll'
+    }
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Folder $_) -PathType Leaf) })
     if ($missing.Count -gt 0) { Fail ("The publish folder is missing: {0}" -f ($missing -join ', ')) }
+
+    # Which shell was published is a property of the payload, not of the switch: catch a stale publish folder.
+    $wpfPresent = Test-Path -LiteralPath (Join-Path $Folder 'PresentationFramework.dll') -PathType Leaf
+    if ($Wpf.IsPresent -ne $wpfPresent) {
+        Fail ("The publish folder holds the {0} shell, but {1} was published." -f `
+            $(if ($wpfPresent) { 'WPF' } else { 'Avalonia' }), $ShellName)
+    }
 
     $loaders = @('WebView2Loader.dll', 'runtimes\win-x64\native\WebView2Loader.dll' |
         Where-Object { Test-Path -LiteralPath (Join-Path $Folder $_) -PathType Leaf })
     if ($loaders.Count -eq 0) { Fail 'WebView2Loader.dll isn''t in the publish folder (neither beside MdReader.exe nor under runtimes\win-x64\native).' }
+
+    # The Avalonia shell's compiled XAML, themes and window icon are an embedded resource of MdReader.dll, not loose
+    # files, so a publish that dropped them would still look complete on disk.
+    if (-not $Wpf) {
+        if (-not (Test-ContainsText (Join-Path $Folder 'MdReader.dll') '!AvaloniaResources')) {
+            Fail 'MdReader.dll carries no !AvaloniaResources section: the compiled XAML and the window icon are missing.'
+        }
+    }
 
     $runtimeConfig = Get-Content -LiteralPath (Join-Path $Folder 'MdReader.runtimeconfig.json') -Raw
     if ($runtimeConfig -notmatch '"includedFrameworks"') { Fail 'MdReader.runtimeconfig.json has no includedFrameworks: the publish isn''t self-contained.' }
@@ -199,14 +247,16 @@ function Assert-PublishOutput([string]$Folder, [string]$ExpectedVersion) {
     $fileVersion = (Get-Item -LiteralPath (Join-Path $Folder 'MdReader.exe')).VersionInfo.FileVersion
     if ($fileVersion -ne $expectedFileVersion) { Fail "MdReader.exe has file version '$fileVersion', expected '$expectedFileVersion'." }
 
-    foreach ($assembly in 'MdReader.dll', 'MdReader.Core.dll') {
+    $readyToRun = @('MdReader.dll', 'MdReader.Core.dll', 'MdReader.Shell.dll')
+    if (-not $Wpf) { $readyToRun += 'Avalonia.Base.dll' }
+    foreach ($assembly in $readyToRun) {
         if (-not (Test-ReadyToRun (Join-Path $Folder $assembly))) { Fail "$assembly has no ReadyToRun code (PublishReadyToRun didn't take effect)." }
     }
 
     $files = @(Get-ChildItem -LiteralPath $Folder -Recurse -File)
     $bytes = ($files | Measure-Object -Property Length -Sum).Sum
-    Write-Host ("Publish folder OK: {0} files, {1:N1} MB, file version {2}, ReadyToRun, WebView2Loader.dll at {3}" -f `
-        $files.Count, ($bytes / 1MB), $fileVersion, ($loaders -join ' + '))
+    Write-Host ("Publish folder OK: {0} shell, {1} files, {2:N1} MB, file version {3}, ReadyToRun, WebView2Loader.dll at {4}" -f `
+        $(if ($Wpf) { 'WPF' } else { 'Avalonia' }), $files.Count, ($bytes / 1MB), $fileVersion, ($loaders -join ' + '))
 }
 
 $exitCode = 0
@@ -217,6 +267,7 @@ try {
     $dotnet = Find-Dotnet
     $iscc = Find-Iscc
     Write-Host "Version : $Version"
+    Write-Host "Shell   : $ShellName"
     Write-Host "dotnet  : $($dotnet.Path) (SDK $($dotnet.Sdk))"
     Write-Host "ISCC    : $iscc"
 
@@ -230,13 +281,13 @@ try {
             Invoke-Native $dotnet.Path @('test', $TestProject, '-c', 'Release', '--nologo') 'The Core tests'
         }
 
-        Write-Step "dotnet publish (Release, win-x64, self-contained, ReadyToRun) -> $PublishDir"
+        Write-Step "dotnet publish $ShellName (Release, win-x64, self-contained, ReadyToRun) -> $PublishDir"
         if (Test-Path -LiteralPath $PublishDir) {
             try { Remove-Item -LiteralPath $PublishDir -Recurse -Force }
             catch { Fail "Couldn't clean $PublishDir (is MdReader.exe running from it?): $($_.Exception.Message)" }
         }
-        Invoke-Native $dotnet.Path @('publish', $AppProject, '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true',
-            '-p:PublishReadyToRun=true', "-p:Version=$Version", '-o', $PublishDir, '--nologo') 'dotnet publish'
+        Invoke-Native $dotnet.Path @('publish', $AppProject, '-c', 'Release', '-f', $TargetFramework, '-r', 'win-x64',
+            '--self-contained', 'true', '-p:PublishReadyToRun=true', "-p:Version=$Version", '-o', $PublishDir, '--nologo') 'dotnet publish'
 
         Write-Step 'Checking the publish folder'
         Assert-PublishOutput $PublishDir $Version
@@ -266,6 +317,7 @@ try {
     Write-Step 'Done'
     Write-Host ("Installer : {0}" -f $setup.FullName)
     Write-Host ("Version   : {0}" -f $Version)
+    Write-Host ("Shell     : {0}" -f $ShellName)
     Write-Host ("Size      : {0:N0} bytes ({1:N1} MB)" -f $setup.Length, ($setup.Length / 1MB))
     Write-Host ("SHA-256   : {0}" -f $hash)
     Write-Host ("Elapsed   : {0:N0} s" -f $stopwatch.Elapsed.TotalSeconds)
