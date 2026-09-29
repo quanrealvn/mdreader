@@ -1,0 +1,89 @@
+/* fold.css — the chevron that folds a heading's section away, and the <details> fold.js builds
+   around the section itself (web/js/fold.js).
+
+   That wrapper is plumbing and the reader should never see it. markdown.css draws a document's
+   OWN <details> as a bordered card with padded contents, which is right for a block an author
+   wrote and quite wrong for one we put there, so everything that rule adds is taken back below.
+   Each selector here carries the extra class, so it outweighs the one it is undoing. */
+
+.markdown-body details.mdr-fold {
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+}
+
+/* A <details> with no summary at all grows a line of the browser's own ("Details"). It has one,
+   and it is not the control — the button in the heading above is. */
+.markdown-body details.mdr-fold > summary {
+  display: none;
+}
+
+.markdown-body details.mdr-fold > *:not(summary) {
+  padding: 0;
+}
+
+.markdown-body details.mdr-fold > *:last-child {
+  padding-bottom: 0;
+}
+
+/* The article zeroes the bottom margin of its own last child. When that last child is a fold,
+   the element the reader actually sees last is one level further in. */
+.markdown-body > .mdr-fold:last-child > *:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* The control                                                            */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body .mdr-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15em;
+  height: 1.15em;
+  margin-left: 0.3em;
+  padding: 0;
+  border: none;
+  border-radius: var(--mdr-radius-sm);
+  background: transparent;
+  color: var(--mdr-fg-muted);
+  vertical-align: middle;
+  cursor: pointer;
+  /* Out of the way until it is wanted. A mark on every heading of every document would be a
+     tax on reading, which is the thing this feature is supposed to be making easier. It keeps
+     its box either way, so hovering the heading reveals it exactly where the pointer already
+     is, and Tab reaches it whether it is painted or not. */
+  opacity: 0;
+}
+
+.markdown-body h1:hover > .mdr-fold-toggle,
+.markdown-body h2:hover > .mdr-fold-toggle,
+.markdown-body h3:hover > .mdr-fold-toggle,
+.markdown-body h4:hover > .mdr-fold-toggle,
+.markdown-body h5:hover > .mdr-fold-toggle,
+.markdown-body h6:hover > .mdr-fold-toggle,
+.markdown-body .mdr-fold-toggle:focus-visible,
+/* A folded section has to say so, or the only way back is a chevron nobody can see. */
+.markdown-body .mdr-fold-toggle[aria-expanded="false"] {
+  opacity: 1;
+  color: var(--mdr-fg);
+}
+
+/* A finger has no hover to reveal anything with, so on a touch screen the chevron is simply
+   there, quietly. */
+@media (hover: none) {
+  .markdown-body .mdr-fold-toggle {
+    opacity: 0.45;
+  }
+}
+
+.markdown-body .mdr-fold-chevron {
+  display: block;
+}
+
+/* Pointing down at the section it is holding open, right at the section it is holding shut. */
+.markdown-body .mdr-fold-toggle[aria-expanded="true"] .mdr-fold-chevron {
+  transform: rotate(90deg);
+}

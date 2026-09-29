@@ -18,6 +18,8 @@ import { initPopover } from "./popover.js";
 import { initPreviews, resetPreviews } from "./previews.js";
 import { initMathSource, resetMathSource } from "./mathsource.js";
 import { resetDiagramViewers } from "./diagrams.js";
+import { initFolds } from "./fold.js";
+import { initStickyHeading } from "./stickyheading.js";
 
 const LARGE_DOC_CHARS = 1_000_000;
 const SCROLL_REAPPLY_MS = 500;
@@ -406,6 +408,8 @@ initTasks(mdrContent);
 initPopover();
 initPreviews();
 initMathSource();
+initFolds();          // before `render` is wired below: fold.js reads the message this one applies
+initStickyHeading();
 
 on("render", handleRender);
 on("renderPart", handleRenderPart);

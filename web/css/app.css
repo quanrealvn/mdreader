@@ -9,6 +9,8 @@
 @import "code.css";
 @import "alerts.css";
 @import "frontmatter.css";
+@import "fold.css";
+@import "stickyheading.css";
 @import "diagram.css";
 @import "popover.css";
 @import "print.css";
