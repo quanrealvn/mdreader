@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Plain SDK + the ASP.NET Core shared framework (not Microsoft.NET.Sdk.Web): wwwroot is composed from linked Content
+       items below, and the Web SDK's static-web-assets pipeline would try to manage (and conflict with) those. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MdReader.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- The implicit usings Microsoft.NET.Sdk.Web would add. -->
+  <ItemGroup>
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MdReader.Core\MdReader.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MdReader.Web.Tests" />
+  </ItemGroup>
+
+  <!-- wwwroot (ARCHITECTURE §15): the desktop page assets from web/ minus its index.html and WebView2 bridge, overlaid by
+       webapp/ (the web index.html, the fetch-based bridge.js shim, webapp.js/css).
+       Copied to <output>/wwwroot and <publish>/wwwroot; Program.cs serves AppContext.BaseDirectory/wwwroot. -->
+  <ItemGroup>
+    <Content Include="..\..\web\**\*" Exclude="..\..\web\index.html;..\..\web\js\bridge.js" LinkBase="wwwroot"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\webapp\**\*" Exclude="..\..\webapp\sw.js" LinkBase="wwwroot"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The service worker is a template (__MDR_CACHE_VERSION__, __MDR_ASSETS__) that ServiceWorkerScript fills in and
+       the /sw.js endpoint serves. It is deliberately kept OUT of wwwroot: the static-file middleware runs before the
+       endpoints, so a copy there would be handed out with its placeholders still in it. -->
+  <ItemGroup>
+    <Content Include="..\..\webapp\sw.js" Link="ServiceWorker\sw.js"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The public pages' own stylesheet, scripts and pictures, served under /site/ (ARCHITECTURE §15.1). They are a
+       third source folder beside web/ and webapp/ rather than files added to either, because neither of those is this
+       feature's to touch: the reader loads none of this, and a diff of web/ and webapp/ against main has to stay
+       empty. -->
+  <ItemGroup>
+    <Content Include="site-assets\**\*" Link="wwwroot\site\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The prose behind the public pages, rendered through MdReader.Core at run time (SiteContent). Deliberately NOT
+       under wwwroot: these are sources, not files the site hands out, and a copy there would be served as a second
+       URL for every page's own text. -->
+  <ItemGroup>
+    <Content Include="content\**\*.md"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

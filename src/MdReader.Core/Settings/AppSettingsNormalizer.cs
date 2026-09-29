@@ -1,0 +1,141 @@
+using MdReader.Core.Paths;
+
+namespace MdReader.Core.Settings;
+
+// Owned by WP4 (ARCHITECTURE §2.2, §4.6).
+// Applied by JsonSettingsStore.Load and every SettingsCoordinator.Update.
+public static class AppSettingsNormalizer
+{
+    /// Clamp Zoom (ZoomLevels.Clamp; NaN → Default), dedupe/trim RecentFiles (rooted paths only, max 10),
+    /// drop Window if Width/Height < 200 or any value is NaN/∞,
+    /// Session: fully-qualified paths only, trimmed, unique the way this platform matches file names (ignoring case on
+    /// Windows and macOS, exactly on Linux), max SessionState.MaxFiles, ActiveFile one of them (else null);
+    /// clamp TocWidth, SplitRatio and FolderPaneWidth (NaN/∞ → Default); drop Folder unless it is a trimmed,
+    /// fully-qualified path; unknown SchemaVersion → defaults.
+    public static AppSettings Normalize(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        if (settings.SchemaVersion != AppSettings.CurrentSchemaVersion)
+        {
+            return new AppSettings();
+        }
+
+        return settings with
+        {
+            Zoom = double.IsNaN(settings.Zoom) ? ZoomLevels.Default : ZoomLevels.Clamp(settings.Zoom),
+            TocWidth = NormalizeTocWidth(settings.TocWidth),
+            Window = NormalizeWindow(settings.Window),
+            RecentFiles = NormalizeRecentFiles(settings.RecentFiles),
+            SplitRatio = NormalizeSplitRatio(settings.SplitRatio),
+            Folder = NormalizeFolder(settings.Folder),
+            FolderPaneWidth = NormalizeFolderPaneWidth(settings.FolderPaneWidth),
+            Session = NormalizeSession(settings.Session),
+        };
+    }
+
+    /// A folder to reopen has to be a path this platform can name; existence is checked when it is opened, not here.
+    private static string? NormalizeFolder(string? folder)
+    {
+        var path = folder?.Trim();
+        return !string.IsNullOrEmpty(path) && PathPolicy.Current.IsFullyQualified(path) ? path : null;
+    }
+
+    private static double NormalizeFolderPaneWidth(double width) =>
+        IsFinite(width)
+            ? Math.Clamp(width, AppSettings.MinFolderPaneWidth, AppSettings.MaxFolderPaneWidth)
+            : AppSettings.DefaultFolderPaneWidth;
+
+    private static double NormalizeTocWidth(double width) =>
+        IsFinite(width) ? Math.Clamp(width, AppSettings.MinTocWidth, AppSettings.MaxTocWidth) : AppSettings.DefaultTocWidth;
+
+    private static double NormalizeSplitRatio(double ratio) =>
+        IsFinite(ratio) ? Math.Clamp(ratio, AppSettings.MinSplitRatio, AppSettings.MaxSplitRatio) : AppSettings.DefaultSplitRatio;
+
+    private static SessionState? NormalizeSession(SessionState? session)
+    {
+        if (session is null)
+        {
+            return null;
+        }
+
+        // Files can be null at runtime despite the annotation (a positional record deserialized without "files").
+        var files = new List<string>(Math.Min(session.Files?.Count ?? 0, SessionState.MaxFiles));
+        var seen = new HashSet<string>(PathPolicy.Current.Comparer);
+        foreach (var raw in session.Files ?? [])
+        {
+            if (files.Count >= SessionState.MaxFiles)
+            {
+                break;
+            }
+
+            var path = raw?.Trim();
+            if (!string.IsNullOrEmpty(path) && PathPolicy.Current.IsFullyQualified(path) && seen.Add(path))
+            {
+                files.Add(path);
+            }
+        }
+
+        var active = session.ActiveFile?.Trim();
+        var activeFile = string.IsNullOrEmpty(active)
+            ? null
+            : files.Find(f => string.Equals(f, active, PathPolicy.Current.Comparison));
+        return new SessionState(files, activeFile);
+    }
+
+    private static WindowPlacement? NormalizeWindow(WindowPlacement? window)
+    {
+        if (window is null)
+        {
+            return null;
+        }
+
+        if (window.Width < 200 || window.Height < 200)
+        {
+            return null;
+        }
+
+        if (!IsFinite(window.Left) || !IsFinite(window.Top) || !IsFinite(window.Width) || !IsFinite(window.Height))
+        {
+            return null;
+        }
+
+        return window;
+    }
+
+    private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
+
+    private static IReadOnlyList<string> NormalizeRecentFiles(IReadOnlyList<string>? recentFiles)
+    {
+        // A hand-edited settings.json (or `Update(s => s with { RecentFiles = null! })`) can legally produce a null
+        // reference here at runtime despite the non-nullable annotation; treat it the same as an empty list.
+        if (recentFiles is null)
+        {
+            return [];
+        }
+
+        var result = new List<string>(Math.Min(recentFiles.Count, RecentFiles.MaxCount));
+        var seen = new HashSet<string>(PathPolicy.Current.Comparer);
+
+        foreach (var raw in recentFiles)
+        {
+            if (result.Count >= RecentFiles.MaxCount)
+            {
+                break;
+            }
+
+            var path = raw?.Trim();
+            if (string.IsNullOrEmpty(path) || !Path.IsPathRooted(path))
+            {
+                continue;
+            }
+
+            if (seen.Add(path))
+            {
+                result.Add(path);
+            }
+        }
+
+        return result;
+    }
+}

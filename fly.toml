@@ -1,0 +1,60 @@
+# MdReader web version on fly.io. Deploy from the repo root with `fly deploy` (remote builder).
+
+app = "mdreader"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ASPNETCORE_ENVIRONMENT = "Production"
+
+  # The limits this machine was measured to survive. They are also the code's defaults; they are written out here
+  # because this is where someone comes to change them, and because they only make sense next to the [[vm]] block at
+  # the bottom of this file — one shared vCPU and 512 MB. The reasoning is on WebLimitsOptions.
+  #
+  # The largest document accepted. It came down from 2 MB: at that size, and still at 1 MB, several shapes of
+  # perfectly legal Markdown exhausted the heap and died after seconds of CPU. Raise it with more memory, not hope.
+  Limits__MaxRequestBodyBytes = "524288"
+  # Per visitor, per minute. The request count is a flood guard; the byte budget is what bounds the CPU one visitor
+  # can buy, because counting requests cannot tell a one-line document from a worst case.
+  Limits__RendersPerWindow = "30"
+  Limits__RenderBytesPerWindow = "4194304"
+  # Per upstream hop, per minute: the backstop against a client that reaches this origin without going through
+  # Cloudflare and invents a CF-Connecting-IP per request. Far above the per-visitor budget on purpose, because
+  # behind Cloudflare one hop is an edge address shared by strangers.
+  Limits__UpstreamBytesPerWindow = "33554432"
+  # One render may hold the worker this long; a whole request, its upload included, this long.
+  Limits__RenderBudget = "00:00:08"
+  Limits__RequestBudget = "00:00:30"
+  # Elements one render may build, against the amplification class: a few kilobytes of raw HTML that the parser
+  # expands into millions of cloned elements, which no size limit would ever notice. Above this, plain text.
+  Limits__MaxRenderElements = "100000"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  # One page load fetches ~15 small files; the app limits renders itself (per client and server-wide). The hard
+  # limit is what the proxy sheds at, and it is deliberately below Kestrel's connection cap so the proxy — which has
+  # a whole machine's memory, not this one's 512 MB — is the thing that says no first.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  path = "/healthz"
+  timeout = "5s"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

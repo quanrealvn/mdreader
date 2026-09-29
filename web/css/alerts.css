@@ -1,0 +1,89 @@
+/*
+ * alerts.css — GitHub-style alerts (`> [!NOTE]` etc.).
+ *
+ * Markdig (with the custom renderKind, ARCHITECTURE.md §4.1) emits:
+ *   <div class="markdown-alert markdown-alert-note">
+ *   <p class="markdown-alert-title">Note</p>
+ *   <p>Useful information.</p>
+ *   </div>
+ * Unknown kinds (`[!CUSTOM]`) become `markdown-alert-custom` with the kind text in
+ * title case; they fall through to the neutral style below since no per-kind
+ * `--mdr-alert-icon`/color override matches their class.
+ *
+ * Colors come from tokens.css (WP7): --mdr-alert-note/tip/important/warning/caution.
+ * Icons are same-origin Octicon SVGs, masked with `background-color: currentColor`
+ * per ARCHITECTURE.md §10.
+ */
+
+.markdown-body .markdown-alert {
+  margin-bottom: 16px;
+  padding: 8px 16px;
+  border-left: 0.25em solid var(--mdr-alert-color, var(--mdr-border));
+  color: var(--mdr-fg);
+}
+
+.markdown-body .markdown-alert > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body .markdown-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--mdr-alert-color, var(--mdr-fg-muted));
+}
+
+.markdown-body .markdown-alert-title::before {
+  content: "";
+  flex-shrink: 0;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask-image: var(--mdr-alert-icon, url("../vendor/octicons/alert-note.svg"));
+  mask-image: var(--mdr-alert-icon, url("../vendor/octicons/alert-note.svg"));
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: 16px 16px;
+  mask-size: 16px 16px;
+}
+
+/* Known GitHub kinds: colored border/title + matching icon. */
+
+.markdown-body .markdown-alert-note {
+  --mdr-alert-color: var(--mdr-alert-note);
+  --mdr-alert-icon: url("../vendor/octicons/alert-note.svg");
+}
+
+.markdown-body .markdown-alert-tip {
+  --mdr-alert-color: var(--mdr-alert-tip);
+  --mdr-alert-icon: url("../vendor/octicons/alert-tip.svg");
+}
+
+.markdown-body .markdown-alert-important {
+  --mdr-alert-color: var(--mdr-alert-important);
+  --mdr-alert-icon: url("../vendor/octicons/alert-important.svg");
+}
+
+.markdown-body .markdown-alert-warning {
+  --mdr-alert-color: var(--mdr-alert-warning);
+  --mdr-alert-icon: url("../vendor/octicons/alert-warning.svg");
+}
+
+.markdown-body .markdown-alert-caution {
+  --mdr-alert-color: var(--mdr-alert-caution);
+  --mdr-alert-icon: url("../vendor/octicons/alert-caution.svg");
+}
+
+/* Unknown kinds (anything other than the five above) fall back to a neutral
+   border/title color (--mdr-fg-muted / --mdr-border) and the note (info) icon,
+   set as defaults on the base rules above — no additional rule needed here. */

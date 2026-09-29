@@ -1,0 +1,599 @@
+/* site.css — the public pages: about, the tool pages and the cheat sheet. Loaded by
+ * those pages only; the reader at "/" does not link it.
+ *
+ * Loaded last, after tokens.css and (where the page has rendered Markdown on it)
+ * markdown.css and code.css, so it can settle anything those leave ambiguous. It defines
+ * no colours of its own: every value here comes from a token, which is why a page follows
+ * the theme the reader chose without a second stylesheet.
+ *
+ * No @font-face and no @import. The type is the system stack the rest of the app uses, so
+ * there is no font to wait for and nothing reflows when one arrives.
+ */
+
+/* An element with `hidden` is hidden, whatever display a rule below gives it. The controls
+   that need scripting ship hidden and are revealed by site.js; without this they would be
+   visible and dead on a page with scripting off. */
+[hidden] {
+  display: none !important;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+.mdr-site {
+  margin: 0;
+  background: var(--mdr-bg);
+  color: var(--mdr-fg);
+  font-family: var(--mdr-font-text);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.mdr-site :focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 2px;
+  border-radius: var(--mdr-radius-sm);
+}
+
+.mdr-site a {
+  color: var(--mdr-link);
+}
+
+/* Clipped rather than pushed off to the left: a far-negative offset widens the scrollable
+   area on a narrow screen, and the page must not scroll sideways on a phone. */
+.mdr-site-skip {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.mdr-site-skip:focus {
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  top: var(--mdr-space-2);
+  left: var(--mdr-space-2);
+  z-index: 10;
+  padding: var(--mdr-space-2) var(--mdr-space-3);
+  background: var(--mdr-bg);
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-md);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Header                                                                  */
+/* ---------------------------------------------------------------------- */
+
+.mdr-site-header {
+  display: flex;
+  align-items: center;
+  gap: var(--mdr-space-3);
+  flex-wrap: wrap;
+  padding: var(--mdr-space-3) var(--mdr-space-4);
+  border-bottom: 1px solid var(--mdr-border);
+}
+
+.mdr-site-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mdr-space-2);
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--mdr-fg);
+  text-decoration: none;
+}
+
+.mdr-site-logo {
+  display: block;
+  flex: none;
+}
+
+.mdr-site-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--mdr-space-2);
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.mdr-site-nav > a:not(.mdr-site-button) {
+  padding: var(--mdr-space-1) var(--mdr-space-2);
+  color: var(--mdr-fg-muted);
+  text-decoration: none;
+}
+
+.mdr-site-nav > a:not(.mdr-site-button):hover {
+  color: var(--mdr-fg);
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Buttons                                                                 */
+/* ---------------------------------------------------------------------- */
+
+/* Scoped with .mdr-site so these beat the `.mdr-site a` colour above: half of the buttons here are links, and a
+   primary button whose label took the link colour would be blue text on a blue background. */
+.mdr-site .mdr-site-button,
+.mdr-site .mdr-site-theme {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mdr-space-2);
+  padding: var(--mdr-space-2) var(--mdr-space-4);
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-md);
+  background: var(--mdr-bg);
+  color: var(--mdr-fg);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.mdr-site .mdr-site-button:hover,
+.mdr-site .mdr-site-theme:hover {
+  background: var(--mdr-bg-subtle);
+}
+
+.mdr-site .mdr-site-button--primary,
+.mdr-site .mdr-site-button--primary:hover {
+  background: var(--mdr-accent);
+  border-color: var(--mdr-accent);
+  color: #ffffff;
+}
+
+.mdr-site .mdr-site-button--small,
+.mdr-site .mdr-site-theme {
+  padding: var(--mdr-space-1) var(--mdr-space-3);
+  font-size: 14px;
+}
+
+/* The theme button needs scripting, so it ships `hidden` and site.js reveals it. That
+   reveal adds an item to the header's row, the row wraps at phone width, and everything
+   below the header moves down — the one layout shift left on these pages, and a big one.
+   So it takes its place from the first paint and is only painted in, the same trick the
+   table grid uses below. Without scripting `data-js` is never set and it stays out of the
+   layout entirely. The width is fixed because the label is "Dark" or "Light" depending on
+   the theme, and the wider of the two arriving a moment later would push its neighbour. */
+:root[data-js] .mdr-site-theme[hidden] {
+  display: inline-flex !important;
+  visibility: hidden;
+}
+
+.mdr-site .mdr-site-theme {
+  justify-content: center;
+  min-width: 4.5rem;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Page grid                                                               */
+/* ---------------------------------------------------------------------- */
+
+/* Two column widths on one grid: prose stays at a readable measure, while the editor and
+   the opening screenshot use the full width the window offers. */
+.mdr-site-main {
+  --mdr-site-gutter: var(--mdr-space-4);
+  display: grid;
+  grid-template-columns:
+    [wide-start] minmax(var(--mdr-site-gutter), 1fr)
+    [text-start] minmax(0, 46rem) [text-end]
+    minmax(var(--mdr-site-gutter), 1fr) [wide-end];
+  padding-block: var(--mdr-space-6) var(--mdr-space-8);
+  row-gap: var(--mdr-space-5);
+}
+
+.mdr-site-main > * {
+  grid-column: text;
+  margin: 0;
+}
+
+/* Wider than the prose, and never edge to edge: the gutter comes out of the width so a
+   phone keeps its 16px margin. */
+.mdr-tool {
+  grid-column: wide;
+  width: min(100% - 2 * var(--mdr-site-gutter), 76rem);
+  margin-inline: auto;
+}
+
+.mdr-site-main > h1 {
+  font-size: clamp(28px, 5vw, 40px);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--mdr-h1);
+}
+
+.mdr-site-lead {
+  font-size: 19px;
+  color: var(--mdr-fg-muted);
+  max-width: 40rem;
+}
+
+.mdr-site-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mdr-space-3);
+}
+
+.mdr-site-crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mdr-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  color: var(--mdr-fg-muted);
+}
+
+.mdr-site-crumbs li + li::before {
+  content: "/";
+  margin-right: var(--mdr-space-2);
+  color: var(--mdr-border);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Figures                                                                 */
+/* ---------------------------------------------------------------------- */
+
+.mdr-site-figure img {
+  display: block;
+  /* The border has to come out of the hundred percent, or the picture is two pixels wider
+     than the column and the whole page scrolls sideways on a phone. */
+  box-sizing: border-box;
+  width: 100%;
+  /* The width and height attributes give the ratio, so the box is the right shape before
+     the bytes arrive and nothing below it moves when they do. */
+  height: auto;
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-lg);
+  background: var(--mdr-bg-subtle);
+}
+
+.mdr-site-figure figcaption {
+  margin-top: var(--mdr-space-2);
+  font-size: 14px;
+  color: var(--mdr-fg-muted);
+}
+
+.mdr-site-prose .mdr-site-figure {
+  margin: var(--mdr-space-5) 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Prose, contents, questions, cards                                       */
+/* ---------------------------------------------------------------------- */
+
+.mdr-site-prose h2 {
+  scroll-margin-top: var(--mdr-space-4);
+}
+
+/* markdown.css pulls a top-level task checkbox into the article's left padding, and the
+   prose here has none: the gutter is the grid's. Give the list back the room, or the
+   checkbox lands off the left edge of a phone. */
+.mdr-site-prose ul.contains-task-list {
+  padding-left: 1.6em;
+}
+
+.mdr-site-contents,
+.mdr-site-faq {
+  padding-top: var(--mdr-space-2);
+}
+
+.mdr-site-contents h2,
+.mdr-site-faq h2,
+.mdr-site-cards h2 {
+  font-size: 22px;
+  margin: 0 0 var(--mdr-space-3);
+  color: var(--mdr-h2);
+}
+
+.mdr-site-contents ul {
+  /* At most two columns, and only while each can still hold a heading: one column on a
+     phone, two on a laptop, decided by the browser rather than by a breakpoint. */
+  columns: 2 16rem;
+  column-gap: var(--mdr-space-5);
+  margin: 0;
+  padding-left: var(--mdr-space-5);
+  font-size: 15px;
+}
+
+.mdr-site-faq h3 {
+  font-size: 17px;
+  margin: var(--mdr-space-5) 0 var(--mdr-space-2);
+  color: var(--mdr-h3);
+}
+
+.mdr-site-faq p {
+  margin: 0;
+  max-width: 44rem;
+}
+
+.mdr-site-cards ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--mdr-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mdr-site-cards a {
+  display: block;
+  height: 100%;
+  padding: var(--mdr-space-3) var(--mdr-space-4);
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-md);
+  color: inherit;
+  text-decoration: none;
+}
+
+.mdr-site-cards a:hover {
+  background: var(--mdr-bg-subtle);
+}
+
+.mdr-site-card-name {
+  display: block;
+  font-weight: 600;
+  color: var(--mdr-link);
+}
+
+.mdr-site-card-blurb {
+  display: block;
+  margin-top: var(--mdr-space-1);
+  font-size: 14px;
+  color: var(--mdr-fg-muted);
+}
+
+/* ---------------------------------------------------------------------- */
+/* The editor and its preview                                              */
+/* ---------------------------------------------------------------------- */
+
+.mdr-tool-panes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--mdr-space-4);
+}
+
+@media (min-width: 62rem) {
+  .mdr-tool-panes {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.mdr-tool-pane {
+  min-width: 0;
+}
+
+.mdr-tool-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mdr-space-3);
+  min-height: 34px;
+  margin-bottom: var(--mdr-space-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mdr-fg-muted);
+}
+
+.mdr-tool-actions {
+  display: flex;
+  gap: var(--mdr-space-2);
+}
+
+.mdr-tool-input {
+  display: block;
+  width: 100%;
+  /* Both panes start at the same height, so revealing a control or swapping the preview
+     never moves the page under the reader. */
+  height: 26rem;
+  padding: var(--mdr-space-3);
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-md);
+  background: var(--mdr-bg);
+  color: var(--mdr-fg);
+  font-family: var(--mdr-font-code);
+  font-size: 13.5px;
+  line-height: 1.6;
+  tab-size: 4;
+}
+
+.mdr-tool-preview {
+  height: 26rem;
+  overflow: auto;
+  padding: var(--mdr-space-4);
+  box-sizing: border-box;
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-md);
+  background: var(--mdr-bg);
+}
+
+.mdr-tool-empty {
+  color: var(--mdr-fg-muted);
+}
+
+.mdr-tool-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--mdr-space-3);
+  margin-top: var(--mdr-space-3);
+}
+
+.mdr-tool-status {
+  margin: 0;
+  font-size: 14px;
+  color: var(--mdr-fg-muted);
+}
+
+.mdr-tool-foot .mdr-site-link {
+  margin-left: auto;
+  font-size: 14px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* The table grid                                                          */
+/* ---------------------------------------------------------------------- */
+
+/* The grid needs scripting, so with scripting off it is not in the layout at all. With
+   scripting on, site-init.js sets data-js before the first paint and the box is laid out
+   at its finished height from the start: table-tool.js then fills it in without pushing
+   the rest of the page down. That is the difference between a clean no-script page and a
+   fifth of a second of the page jumping under the reader. */
+.mdr-tool-builder {
+  display: none;
+}
+
+:root[data-js] .mdr-tool-builder {
+  display: block;
+  /* The sample table's own height: a heading row, the alignment row and three rows. */
+  min-height: 16.5rem;
+  margin-bottom: var(--mdr-space-4);
+  visibility: hidden;
+}
+
+:root[data-js] .mdr-tool-builder.is-ready {
+  visibility: visible;
+}
+
+.mdr-tool-builder-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mdr-space-2);
+  margin-bottom: var(--mdr-space-3);
+}
+
+.mdr-tool-builder-size {
+  display: flex;
+  gap: var(--mdr-space-2);
+}
+
+.mdr-tool-grid-scroll {
+  overflow-x: auto;
+}
+
+.mdr-tool-grid {
+  border-collapse: collapse;
+}
+
+.mdr-tool-grid th,
+.mdr-tool-grid td {
+  padding: 0;
+  border: 1px solid var(--mdr-border);
+}
+
+.mdr-tool-grid input,
+.mdr-tool-align {
+  width: 100%;
+  min-width: 8rem;
+  box-sizing: border-box;
+  padding: var(--mdr-space-2);
+  border: 0;
+  background: transparent;
+  color: var(--mdr-fg);
+  font: inherit;
+  font-size: 14px;
+}
+
+.mdr-tool-grid thead tr:first-child input {
+  font-weight: 600;
+}
+
+.mdr-tool-align {
+  color: var(--mdr-fg-muted);
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Footer                                                                  */
+/* ---------------------------------------------------------------------- */
+
+.mdr-site-footer {
+  border-top: 1px solid var(--mdr-border);
+  padding: var(--mdr-space-6) var(--mdr-space-4);
+}
+
+.mdr-site-footer-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, auto));
+  gap: var(--mdr-space-6);
+  justify-content: start;
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+.mdr-site-footer h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mdr-fg-muted);
+  margin: 0 0 var(--mdr-space-2);
+}
+
+.mdr-site-footer ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+}
+
+.mdr-site-footer li + li {
+  margin-top: var(--mdr-space-1);
+}
+
+.mdr-site-colophon {
+  max-width: 60rem;
+  margin: var(--mdr-space-6) auto 0;
+  font-size: 14px;
+  color: var(--mdr-fg-muted);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Printing                                                                */
+/* ---------------------------------------------------------------------- */
+
+/* Printing the Markdown-to-PDF page puts the rendered document on the sheet and nothing
+   else: no header, no editor, no prose about how printing works. The rules hang on the
+   page's own class rather than on anything script sets, so Ctrl+P does it too and the page
+   converts a document to a PDF with scripting off. Every other page prints as it looks. */
+@media print {
+  .mdr-site-printable .mdr-site-header,
+  .mdr-site-printable .mdr-site-footer,
+  .mdr-site-printable .mdr-site-skip,
+  .mdr-site-printable .mdr-site-crumbs,
+  .mdr-site-printable .mdr-site-main > h1,
+  .mdr-site-printable .mdr-site-lead,
+  .mdr-site-printable .mdr-site-prose,
+  .mdr-site-printable .mdr-site-cards,
+  .mdr-site-printable .mdr-site-faq,
+  .mdr-site-printable .mdr-site-contents,
+  .mdr-site-printable .mdr-tool-builder,
+  .mdr-site-printable .mdr-tool-head,
+  .mdr-site-printable .mdr-tool-foot,
+  .mdr-site-printable .mdr-tool-panes > .mdr-tool-pane:first-child {
+    display: none !important;
+  }
+
+  .mdr-site-printable .mdr-site-main,
+  .mdr-site-printable .mdr-tool-panes {
+    display: block;
+    padding: 0;
+  }
+
+  .mdr-site-printable .mdr-tool,
+  .mdr-site-printable .mdr-tool-preview {
+    width: auto;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+  }
+}

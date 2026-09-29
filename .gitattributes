@@ -1,0 +1,22 @@
+* text=auto
+
+*.cs      text diff=csharp
+*.xaml    text
+*.csproj  text
+*.sln     text eol=crlf
+*.iss     text eol=crlf
+*.ps1     text eol=crlf
+*.cmd     text eol=crlf
+*.sh      text eol=lf
+
+*.png     binary
+*.ico     binary
+*.woff    binary
+*.woff2   binary
+
+# Vendored third-party files stay byte-exact
+web/vendor/** -text
+
+# Sample documents are test fixtures: keep LF everywhere so golden tests are deterministic
+docs/samples/** text eol=lf
+docs/samples/**/*.png binary
