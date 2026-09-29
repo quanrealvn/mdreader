@@ -21,7 +21,6 @@ internal static class PageHtml
 {
     private const string Brand = "MdReader";
     private const string Repository = "https://github.com/quanrealvn/mdreader";
-    private const string Download = Repository + "/releases/latest/download/MdReader-Setup.exe";
 
     public static string Build(SitePage page, SiteOptions options, RenderedMarkdown? body, RenderedMarkdown? sample)
     {
@@ -232,7 +231,6 @@ internal static class PageHtml
             .Append("<li><a href=\"").Append(SiteCatalog.ReaderPath).Append("\">The reader</a></li>\n")
             .Append("<li><a href=\"").Append(SiteCatalog.AboutPath).Append("\">About MdReader</a></li>\n")
             .Append("<li><a href=\"").Append(SiteCatalog.CheatSheetPath).Append("\">Markdown cheat sheet</a></li>\n")
-            .Append("<li><a href=\"").Append(Download).Append("\" rel=\"noopener\">MdReader for Windows</a></li>\n")
             .Append("<li><a href=\"").Append(Repository).Append("\" rel=\"noopener\">Source on GitHub</a></li>\n")
             .Append("</ul>\n</nav>\n</div>\n")
             .Append("<p class=\"mdr-site-colophon\">MdReader is open source under the MIT license. ")

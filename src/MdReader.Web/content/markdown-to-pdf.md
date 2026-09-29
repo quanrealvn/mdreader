@@ -40,5 +40,5 @@ and printing the parts separately is the only reliable way to control it.
 
 The Windows app has two ways out. Ctrl+P opens the same print dialog as here, and
 Ctrl+Shift+S ("Export as PDF") skips it: pick a file name and the PDF is written straight
-out, with the code-block backgrounds already switched on. Use the app when the file is on
-your disk and you would rather not paste it anywhere.
+out, with the code-block backgrounds already switched on. The app does that when the file
+is on your disk and you would rather not paste it anywhere.

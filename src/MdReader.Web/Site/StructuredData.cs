@@ -80,7 +80,7 @@ internal static class StructuredData
             ["url"] = url,
             ["description"] = page.Description,
             ["applicationCategory"] = Category,
-            ["operatingSystem"] = isProduct ? "Web browser, Windows 10, Windows 11" : "Web browser",
+            ["operatingSystem"] = "Web browser",
             ["browserRequirements"] = "The page renders without JavaScript. Diagrams, math and syntax "
                 + "highlighting need it.",
             ["softwareVersion"] = Version,
@@ -100,7 +100,7 @@ internal static class StructuredData
             // the two together, and it is the honest way round: "/" is the thing, "/about" is the page about it.
             json["url"] = options.Absolute(SiteCatalog.ReaderPath);
             json["mainEntityOfPage"] = new JsonObject { ["@type"] = "WebPage", ["@id"] = url };
-            json["downloadUrl"] = Repository + "/releases/latest";
+            json["sameAs"] = Repository;
             json["softwareHelp"] = options.Absolute(SiteCatalog.CheatSheetPath);
             json["screenshot"] = options.Absolute(SiteImages.Reader);
             json["featureList"] = new JsonArray(

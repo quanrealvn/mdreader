@@ -45,8 +45,8 @@ side. It also has find, zoom, printing and PDF export.
 
 {{figure:windows}}
 
-The download costs nothing. The installer is not signed yet, so Windows shows a
-SmartScreen warning the first time you run it: choose "More info", then "Run anyway".
+The desktop app is not something you can download here at the moment. The browser version
+is the public one, and it renders every document the same way.
 
 ## The same renderer on both sides
 

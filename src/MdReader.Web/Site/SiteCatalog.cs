@@ -41,7 +41,7 @@ internal static class SiteCatalog
             [
                 new FaqItem(
                     "Is MdReader free?",
-                    "Yes. The browser version is free to use and the Windows app is a free download. The source is "
+                    "Yes. The browser version is free to use, with no account and nothing to install. The source is "
                     + "on GitHub under the MIT license."),
                 new FaqItem(
                     "Do I need an account?",
