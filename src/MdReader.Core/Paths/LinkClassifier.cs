@@ -8,7 +8,8 @@ namespace MdReader.Core.Paths;
 public sealed class LinkClassifier
 {
     internal const string UnsupportedLinkReason = "This type of link isn't opened by MdReader.";
-    internal const string NotMarkdownReason = "Only Markdown files open in MdReader.";
+    /// <summary>Shown when a link names a file this application does not read. The name predates JSON.</summary>
+    internal const string NotMarkdownReason = "Only Markdown and JSON files open in MdReader.";
 
     private static readonly LinkTarget.Blocked Unsupported = new(UnsupportedLinkReason);
     private static readonly LinkTarget.Blocked NotMarkdown = new(NotMarkdownReason);
@@ -167,7 +168,7 @@ public sealed class LinkClassifier
             return new LinkTarget.Anchor(reference.Fragment ?? string.Empty);
         }
 
-        if (MarkdownFileTypes.IsMarkdownPath(target))
+        if (DocumentFileTypes.IsDocumentPath(target))
         {
             // Existence is not checked: a missing target opens a tab that shows "not found".
             return new LinkTarget.MarkdownDocument(target, reference.Fragment);

@@ -174,7 +174,10 @@ public static class FolderScanner
                 frame.ChildDirectories.Add((directory.FullName, directory.Name));
                 state.Entries++;
             }
-            else if (state.Options.IncludeAllFiles || MarkdownFileTypes.IsMarkdownPath(entry.Name))
+            // The pane lists what can be opened from it, so the test is "does this application render it?" rather
+            // than "is it Markdown?". A JSON file that renders in a tab but never appears in the tree could only be
+            // reached by going back to Explorer, which is the trip the pane exists to save.
+            else if (state.Options.IncludeAllFiles || DocumentFileTypes.IsDocumentPath(entry.Name))
             {
                 frame.Files.Add(new FolderNode(entry.FullName, entry.Name, IsDirectory: false, []));
                 state.Files.Add(entry.FullName);

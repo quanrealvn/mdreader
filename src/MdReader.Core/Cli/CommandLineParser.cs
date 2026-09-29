@@ -25,7 +25,7 @@ public static class CommandLineParser
           --perf-log <out.json>         Write a performance report to <out.json> after the first document finishes rendering.
           --help, -h, /?                Show this help message.
           --                            Treat all further arguments as files, even if they start with '-'.
-          files...                      Markdown files to open. Relative paths resolve against the current directory.
+          files...                      Markdown or JSON files to open. Relative paths resolve against the current directory.
                                          'file:///' URIs are converted to local paths.
                                          An 'http://' or 'https://' address is fetched and shown read-only.
         """;

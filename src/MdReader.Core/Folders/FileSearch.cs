@@ -34,7 +34,9 @@ public sealed record SearchHit(string FilePath, int Line, string Context, int Ma
 public sealed record SearchSummary(int FilesScanned, int FilesWithHits, int FilesSkipped, int HitCount, bool Truncated);
 
 /// <summary>
-/// Searches a set of Markdown files for a literal string (ARCHITECTURE M13).
+/// Searches a set of files for a literal string (ARCHITECTURE M13). The set is whatever the folder pane listed, so
+/// it covers the folder's JSON documents as well as its Markdown ones — a search that read only half of what the
+/// pane shows would be a quiet lie about where a term does not appear.
 /// </summary>
 /// <remarks>
 /// <para>Files are read through <see cref="IDocumentLoader"/>, the same reader that opens a document, so encodings,

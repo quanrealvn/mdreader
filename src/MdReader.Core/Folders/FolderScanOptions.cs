@@ -17,7 +17,10 @@ public sealed record FolderScanOptions
 
     internal static FolderScanOptions Default { get; } = new();
 
-    /// <summary>False (the default) shows Markdown files only and prunes folders that end up with nothing in them.</summary>
+    /// <summary>
+    /// False (the default) shows only the files MdReader opens — <see cref="Paths.DocumentFileTypes"/>, Markdown and
+    /// JSON — and prunes folders that end up with nothing in them.
+    /// </summary>
     public bool IncludeAllFiles { get; init; }
 
     /// <summary>Folder names skipped wherever they appear, matched the way the platform matches file names.</summary>
