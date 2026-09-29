@@ -14,6 +14,10 @@ import { showError, hideError } from "./errorview.js";
 import { enhanceCode } from "./codeblocks.js";
 import { enhanceMath, enhanceDiagrams, setDiagramTheme } from "./enhance.js";
 import { initTasks, setTaskVersion } from "./tasks.js";
+import { initPopover } from "./popover.js";
+import { initPreviews, resetPreviews } from "./previews.js";
+import { initMathSource, resetMathSource } from "./mathsource.js";
+import { resetDiagramViewers } from "./diagrams.js";
 
 const LARGE_DOC_CHARS = 1_000_000;
 const SCROLL_REAPPLY_MS = 500;
@@ -26,6 +30,9 @@ const mdrBanner = document.getElementById("mdr-banner");
 
 let currentTheme = htmlEl.getAttribute("data-theme") === "dark" ? "dark" : "light";
 let printModeOn = false;
+
+/** Collapsed front-matter lists this page opened for printing, to close again afterwards. */
+const expandedForPrint = new Set();
 
 // The last fully applied render, used to discard stale/duplicate payloads (§7.1 rule 4)
 // AND, via `isCurrentRender` below, to detect that a render has been superseded while
@@ -107,6 +114,13 @@ function renderContent(html, meta, renderCtx) {
   const isEmpty = html.trim().length === 0;
   const savedScrollTop = meta.preserveScroll ? mdrMain.scrollTop : 0;
 
+  // Everything that points at a node inside #mdr-content has to let go before the HTML under it
+  // is replaced: an open preview or LaTeX popover would otherwise stay on screen anchored to an
+  // element that no longer exists, and a diagram viewer would keep a detached container alive.
+  resetPreviews();
+  resetMathSource();
+  resetDiagramViewers();
+
   hideError();
   mdrContent.classList.remove("mdr-empty-state");
 
@@ -122,6 +136,10 @@ function renderContent(html, meta, renderCtx) {
   }
 
   htmlEl.classList.toggle("mdr-large", html.length > LARGE_DOC_CHARS);
+
+  // A live reload while the print preview is up brings in a document whose front-matter list is
+  // collapsed again, and the printout still wants all of it.
+  if (printModeOn) setFrontMatterPrintState(true);
 
   if (meta.title) document.title = meta.title;
 
@@ -283,9 +301,38 @@ function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+/**
+ * A front-matter list that is collapsed on screen still belongs in a printout, and `<details>`
+ * hides its contents through a UA rule that CSS can't reliably reach across engines. Opening the
+ * element itself is unambiguous; `expandedForPrint` remembers which ones we opened so leaving
+ * print mode puts them back exactly as the reader had them.
+ * @param {boolean} expand
+ */
+function setFrontMatterPrintState(expand) {
+  if (expand) {
+    // A live reload while print mode is on replaces the document underneath: whatever we opened in
+    // the previous one is detached now, and holding onto it would keep that document alive.
+    for (const details of expandedForPrint) {
+      if (!details.isConnected) expandedForPrint.delete(details);
+    }
+
+    for (const details of mdrContent.querySelectorAll("details.markdown-frontmatter-more:not([open])")) {
+      details.open = true;
+      expandedForPrint.add(details);
+    }
+    return;
+  }
+
+  for (const details of expandedForPrint) {
+    if (details.isConnected) details.open = false;
+  }
+  expandedForPrint.clear();
+}
+
 async function enterPrintMode() {
   printModeOn = true;
   htmlEl.setAttribute("data-print", "");
+  setFrontMatterPrintState(true);
   await setDiagramTheme("light");
   // Print CSS can ask for a face nothing on screen used yet; a PDF written before it arrives
   // has the fallback font baked in and no second chance to repaint.
@@ -298,6 +345,7 @@ function exitPrintMode() {
   if (!printModeOn) return;
   printModeOn = false;
   htmlEl.removeAttribute("data-print");
+  setFrontMatterPrintState(false);
   setDiagramTheme(currentTheme);
 }
 
@@ -355,6 +403,9 @@ window.addEventListener("securitypolicyviolation", (event) => {
 // ---------------------------------------------------------------------------------
 
 initTasks(mdrContent);
+initPopover();
+initPreviews();
+initMathSource();
 
 on("render", handleRender);
 on("renderPart", handleRenderPart);
@@ -368,6 +419,9 @@ on("tocToggle", () => toggleToc());
 on("banner", (msg) => setBanner(msg.banner ?? null));
 on("error", (msg) => {
   assembling = null;
+  resetPreviews();
+  resetMathSource();
+  resetDiagramViewers();
   renderToc([]);
   setBanner(null);
   document.title = DEFAULT_TITLE;

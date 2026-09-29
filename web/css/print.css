@@ -55,8 +55,22 @@
   .mdr-banner,
   .mdr-toc,
   .mdr-toc-backdrop,
-  .mdr-code-toolbar {
+  .mdr-code-toolbar,
+  .mdr-diagram-tools,
+  .mdr-popover {
     display: none !important;
+  }
+
+  /* A long front-matter list is collapsed on screen, but a printout wants all of it. main.js
+     opens these while the host's print mode is on, which covers the engines this selector — a
+     recent Chromium addition — doesn't reach. */
+  .markdown-frontmatter-more::details-content {
+    content-visibility: visible !important;
+  }
+
+  /* The control itself is chrome: by the time this matters the list is already open. */
+  .markdown-frontmatter-more > summary {
+    display: none;
   }
 
   .mdr-main {
@@ -145,8 +159,14 @@
 :root[data-print] .mdr-banner,
 :root[data-print] .mdr-toc,
 :root[data-print] .mdr-toc-backdrop,
-:root[data-print] .mdr-code-toolbar {
+:root[data-print] .mdr-code-toolbar,
+:root[data-print] .mdr-diagram-tools,
+:root[data-print] .mdr-popover {
   display: none !important;
+}
+
+:root[data-print] .markdown-frontmatter-more > summary {
+  display: none;
 }
 
 :root[data-print] .mdr-main {

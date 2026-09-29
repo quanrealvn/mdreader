@@ -1,0 +1,175 @@
+/*
+ * frontmatter.css — the header card Core renders for a document's YAML front matter
+ * (ARCHITECTURE §4.1). The markup is `markdown-frontmatter…` rather than `mdr-…` because the
+ * sanitizer strips `mdr-` classes from content; everything here is therefore scoped under
+ * `.markdown-body` so it can only affect the rendered document.
+ *
+ * It is content, not chrome: it prints, and it carries no interactive affordance beyond the
+ * `<details>` that holds the long tail of fields.
+ */
+
+:root[data-theme="light"] {
+  --mdr-fm-bg: #f6f8fa;
+  --mdr-fm-tag-bg: #ddf4ff;
+  --mdr-fm-tag-fg: #0550ae;
+}
+
+:root[data-theme="dark"] {
+  --mdr-fm-bg: #151b23;
+  --mdr-fm-tag-bg: #121d2f;
+  --mdr-fm-tag-fg: #4493f8;
+}
+
+.markdown-body .markdown-frontmatter {
+  margin: 0 0 24px;
+  padding: 16px 20px;
+  background-color: var(--mdr-fm-bg);
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-md);
+}
+
+.markdown-body .markdown-frontmatter > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body .markdown-frontmatter-title {
+  margin: 0 0 4px;
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--mdr-h1);
+}
+
+.markdown-body .markdown-frontmatter-description {
+  margin: 0 0 8px;
+  color: var(--mdr-fg-muted);
+}
+
+.markdown-body .markdown-frontmatter-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+  font-size: 0.875em;
+  color: var(--mdr-fg-muted);
+}
+
+.markdown-body .markdown-frontmatter-author::before {
+  /* A separator that belongs to the layout, so it is never part of a copied selection. */
+  content: "\00B7";
+  margin-right: 8px;
+}
+
+.markdown-body .markdown-frontmatter-meta > :first-child::before {
+  content: none;
+  margin-right: 0;
+}
+
+.markdown-body .markdown-frontmatter-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.markdown-body .markdown-frontmatter-tag {
+  padding: 1px 10px;
+  font-size: 0.8125em;
+  line-height: 1.6;
+  color: var(--mdr-fm-tag-fg);
+  background-color: var(--mdr-fm-tag-bg);
+  border-radius: var(--mdr-radius-full);
+}
+
+/* markdown.css draws a document's own `<details>` as a bordered box; inside the card that would be
+   a panel inside a panel, so this one is flat and aligned with the rows above it. */
+.markdown-body .markdown-frontmatter-more {
+  margin: 0;
+  padding: 0;
+  font-size: 0.875em;
+  border: none;
+  border-radius: 0;
+}
+
+.markdown-body .markdown-frontmatter-more > summary,
+.markdown-body .markdown-frontmatter-more[open] > summary {
+  padding: 0;
+  margin-bottom: 0;
+  font-weight: 400;
+  border-bottom: none;
+}
+
+.markdown-body .markdown-frontmatter-more > *:not(summary) {
+  padding: 0;
+}
+
+/* The disclosure triangle is the UA's own `::marker`, not a `::before` of ours: generated content
+   lands in the element's accessible name, so a drawn triangle would make a screen reader announce
+   "▸ 7 more fields" on a control that already reports its expanded state. */
+.markdown-body .markdown-frontmatter-more > summary {
+  cursor: pointer;
+  color: var(--mdr-fg-muted);
+}
+
+.markdown-body .markdown-frontmatter-more > summary::marker {
+  color: var(--mdr-fg-muted);
+}
+
+.markdown-body .markdown-frontmatter-more > summary:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 2px;
+  border-radius: var(--mdr-radius-sm);
+}
+
+/* A two-column key/value grid that falls back to stacked rows when there isn't room — a narrow
+   window, a high zoom level, or a key long enough to need a line of its own. */
+.markdown-body .markdown-frontmatter-fields {
+  display: grid;
+  grid-template-columns: minmax(6em, max-content) 1fr;
+  gap: 2px 16px;
+  margin: 8px 0 0;
+}
+
+.markdown-body .markdown-frontmatter-fields > dt {
+  margin: 0;
+  padding: 0;
+  font-weight: 600;
+  color: var(--mdr-fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.markdown-body .markdown-frontmatter-fields > dd {
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;      /* block scalars keep their line breaks */
+  overflow-wrap: anywhere;
+}
+
+.markdown-body .markdown-frontmatter-sep {
+  color: var(--mdr-fg-muted);
+}
+
+.markdown-body .markdown-frontmatter-note {
+  margin: 8px 0 0;
+  color: var(--mdr-fg-muted);
+  font-style: italic;
+}
+
+.markdown-body pre.markdown-frontmatter-raw {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  font-size: 0.9375em;
+  background-color: var(--mdr-bg);
+  border: 1px solid var(--mdr-border);
+}
+
+@media (max-width: 520px) {
+  .markdown-body .markdown-frontmatter-fields {
+    grid-template-columns: 1fr;
+    gap: 0 0;
+  }
+
+  .markdown-body .markdown-frontmatter-fields > dd {
+    margin-bottom: 6px;
+  }
+}

@@ -15,6 +15,7 @@ namespace MdReader.Core.Protocol;
 [JsonDerivedType(typeof(DropMessage), "drop")]
 [JsonDerivedType(typeof(DropTextMessage), "dropText")]
 [JsonDerivedType(typeof(TaskToggleMessage), "taskToggle")]
+[JsonDerivedType(typeof(SaveFileMessage), "saveFile")]
 public abstract record WebMessage;
 
 public sealed record ReadyMessage(int Protocol) : WebMessage;
@@ -48,6 +49,14 @@ public sealed record DropTextMessage(string Text) : WebMessage;
 /// The user ticked a task-list checkbox. Line is the 1-based source line the checkbox was rendered from (its data-line,
 /// §4.1); Version is the render that box belongs to, so a stale click on an outdated page is ignored.
 public sealed record TaskToggleMessage(int Line, bool Checked, int Version) : WebMessage;
+
+/// <summary>
+/// The user asked to save something the page produced — today a diagram exported as SVG or PNG. The WebView cancels
+/// every download (§8.4) and that stays, so the page hands the bytes to the host instead and the host shows the save
+/// dialog. <c>Name</c> is only a suggestion (<c>ExportFileTypes.SuggestFileName</c> rewrites it), <c>MimeType</c> must
+/// be one of <c>ExportFileTypes</c>, and <c>Base64</c> carries the content.
+/// </summary>
+public sealed record SaveFileMessage(string Name, string MimeType, string Base64) : WebMessage;
 
 public enum RenderPhase { [JsonStringEnumMemberName("content")] Content, [JsonStringEnumMemberName("enhanced")] Enhanced }
 

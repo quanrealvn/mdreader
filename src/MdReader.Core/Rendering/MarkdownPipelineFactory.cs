@@ -33,6 +33,7 @@ internal static class MarkdownPipelineFactory
     {
         var builder = new MarkdownPipelineBuilder()
             .UseYamlFrontMatter()
+            .Use<FrontMatterExtension>()        // front matter as a header card instead of nothing (§4.1)
             .UsePipeTables(new PipeTableOptions { UseGfmRules = true })
             .UseFootnotes()
             .Use<HeadingIdExtension>();         // = UseAutoIdentifiers(AutoIdentifierOptions.GitHub), in linear time

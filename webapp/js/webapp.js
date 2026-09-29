@@ -1273,10 +1273,84 @@ attachHost((message, files) => {
     case "taskToggle":
       onTaskToggle(message);
       break;
+    case "saveFile":
+      saveFile(message);
+      break;
     default:
       break;
   }
 });
+
+/**
+ * The page asked for a file to be saved (a diagram export, §7.2 `saveFile`). The desktop host
+ * shows a save dialog because §8.4 cancels WebView downloads; in a browser tab an ordinary
+ * download is exactly the right thing, so the shim turns the message back into one.
+ */
+function saveFile(message) {
+  const extension = message.mimeType === "image/svg+xml" ? "svg"
+    : message.mimeType === "image/png" ? "png"
+      : null;
+  if (!extension) return;
+
+  let url = null;
+  try {
+    const binary = atob(String(message.base64 ?? ""));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    url = URL.createObjectURL(new Blob([bytes], { type: message.mimeType }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${downloadStem(message.name, extension)}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } catch {
+    toast("Couldn't save the file.");
+  } finally {
+    // Revoked on the next turn: the URL has to still resolve while the click is being handled.
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+}
+
+/** Windows reserves these stems on every extension; the same list MdReader.Core keeps. */
+const RESERVED_NAMES = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+
+/** Characters of the stem kept, counted in UTF-16 units — the same unit MdReader.Core counts in. */
+const MAX_STEM_LENGTH = 80;
+
+/**
+ * There is no host to sanitize this on the web, so this is the sanitizer: the rules of
+ * MdReader.Core's `ExportFileTypes.SuggestFileName`, transliterated. Letters, decimal digits and
+ * combining marks are kept; every run of anything else collapses to the first separator in it, or
+ * to a dash; the stem is cut to 80 units, never mid-character; leading and trailing separators go;
+ * and a reserved device name is defused. No path, no drive, no dot and therefore no second
+ * extension can survive it.
+ *
+ * One documented difference from the host: iterating by code point keeps letters outside the Basic
+ * Multilingual Plane, which `char.IsLetterOrDigit` turns into a dash. The web version is the more
+ * generous of the two, and neither can produce anything unsafe.
+ */
+function downloadStem(name, extension) {
+  let stem = "";
+  let lastWasSeparator = false;
+
+  for (const character of String(name ?? "")) {   // by code point, so a pair is never split
+    if (stem.length >= MAX_STEM_LENGTH) break;
+    if (/[\p{L}\p{Nd}\p{M}]/u.test(character)) {
+      stem += character;
+      lastWasSeparator = false;
+      continue;
+    }
+    if (lastWasSeparator || stem.length === 0) continue;
+    stem += "_- ".includes(character) ? character : "-";
+    lastWasSeparator = true;
+  }
+
+  stem = stem.replace(/[-_ ]+$/u, "");
+  if (stem.length === 0) return "diagram";
+  return RESERVED_NAMES.test(stem) ? `${stem}-${extension}` : stem;
+}
 
 // ---------------------------------------------------------------------------------
 // images the web version can't show

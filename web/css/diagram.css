@@ -1,0 +1,169 @@
+/*
+ * diagram.css — the pan/zoom viewport and controls web/js/diagrams.js wraps a rendered Mermaid
+ * diagram in. The diagram itself is still styled by markdown.css.
+ *
+ * At 100 % the viewport has no explicit height and the canvas carries an identity transform, so a
+ * diagram nobody has touched lays out exactly as it did before this file existed. Print undoes
+ * whatever the reader did: the transform and the height are inline styles, and `!important` in a
+ * stylesheet outranks an inline declaration, so no JavaScript has to run for a printout to show
+ * the whole diagram.
+ */
+
+.markdown-body .mdr-mermaid {
+  position: relative;
+}
+
+.markdown-body .mdr-diagram-viewport {
+  position: relative;
+  overflow: hidden;
+  /* A vertical swipe always scrolls the document; horizontal drags and pinches reach the page. */
+  touch-action: pan-y;
+  border-radius: var(--mdr-radius-sm);
+}
+
+.markdown-body .mdr-diagram-viewport:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 2px;
+}
+
+.markdown-body .mdr-diagram-viewport.is-zoomed {
+  cursor: grab;
+  background-color: var(--mdr-bg-subtle);
+}
+
+.markdown-body .mdr-diagram-viewport.is-zoomed:active {
+  cursor: grabbing;
+}
+
+.markdown-body .mdr-diagram-canvas {
+  transform-origin: 0 0;
+  /* The SVG is inline-block, which would otherwise add a baseline gap to the measured height the
+     viewport and the clamp are computed from. */
+  line-height: 0;
+  /* Dragging is panning, so a drag must never start a text selection inside the diagram. */
+  user-select: none;
+}
+
+.markdown-body .mdr-diagram-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--mdr-duration-fast) var(--mdr-easing);
+}
+
+.markdown-body .mdr-mermaid:hover .mdr-diagram-tools,
+.markdown-body .mdr-mermaid:focus-within .mdr-diagram-tools {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  /* Touch devices have no hover: keep the controls reachable. */
+  .markdown-body .mdr-diagram-tools {
+    opacity: 1;
+  }
+}
+
+.markdown-body .mdr-diagram-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-sizing: border-box;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 4px;
+  font-family: var(--mdr-font-text);
+  font-size: 12px;
+  color: var(--mdr-fg-muted);
+  background-color: var(--mdr-code-chip-bg);
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-sm);
+  cursor: pointer;
+}
+
+.markdown-body .mdr-diagram-button--wide {
+  padding: 0 8px 0 4px;
+}
+
+.markdown-body .mdr-diagram-button:hover {
+  background-color: var(--mdr-code-btn-hover-bg);
+  color: var(--mdr-fg);
+}
+
+.markdown-body .mdr-diagram-button:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 2px;
+}
+
+.markdown-body .mdr-diagram-button.is-failed {
+  color: var(--mdr-alert-caution);
+  border-color: var(--mdr-alert-caution);
+}
+
+.markdown-body .mdr-diagram-zoom {
+  min-width: 4.5ch;
+  font-family: var(--mdr-font-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--mdr-fg-muted);
+  background-color: var(--mdr-code-chip-bg);
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-sm);
+  padding: 2px 6px;
+  user-select: none;
+}
+
+/* The icons icons.js builds: stroked, sized in the button, and coloured by the button. */
+.markdown-body .mdr-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Print                                                                   */
+/* ---------------------------------------------------------------------- */
+
+@media print {
+  .markdown-body .mdr-diagram-tools {
+    display: none !important;
+  }
+
+  .markdown-body .mdr-diagram-viewport {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .markdown-body .mdr-diagram-canvas {
+    transform: none !important;
+  }
+}
+
+:root[data-print] .markdown-body .mdr-diagram-tools {
+  display: none !important;
+}
+
+:root[data-print] .markdown-body .mdr-diagram-viewport {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+:root[data-print] .markdown-body .mdr-diagram-canvas {
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-body .mdr-diagram-tools {
+    transition: none;
+  }
+}

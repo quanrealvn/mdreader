@@ -1,0 +1,174 @@
+/*
+ * popover.css — the one floating layer (web/js/popover.js) behind link/footnote previews and the
+ * LaTeX source of a formula, plus the two things that open it.
+ *
+ * It is app chrome: `position: fixed`, outside #mdr-content, and it disappears entirely in print
+ * and in the print-preview mode the host drives.
+ */
+
+:root[data-theme="light"] {
+  --mdr-popover-bg: #ffffff;
+}
+
+:root[data-theme="dark"] {
+  --mdr-popover-bg: #1c2128;
+}
+
+.mdr-popover {
+  position: fixed;
+  z-index: 40;
+  box-sizing: border-box;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 10px 14px;
+  font-family: var(--mdr-font-text);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--mdr-fg);
+  background-color: var(--mdr-popover-bg);
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-md);
+  box-shadow: var(--mdr-shadow-md);
+  /* The reader can select the text in here; they just can't click through it. */
+  overscroll-behavior: contain;
+}
+
+.mdr-popover[hidden] {
+  display: none;
+}
+
+.mdr-popover:focus-visible,
+.mdr-popover *:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Link and footnote previews                                              */
+/* ---------------------------------------------------------------------- */
+
+.mdr-preview > * {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.mdr-preview > *:last-child {
+  margin-bottom: 0;
+}
+
+.mdr-preview p,
+.mdr-preview li {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.mdr-preview pre {
+  max-height: 140px;
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.mdr-preview img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Links inside a preview had their href removed (previews.js), so they must not look clickable. */
+.mdr-preview a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mdr-preview-note {
+  color: var(--mdr-fg-muted);
+  font-style: italic;
+}
+
+.mdr-preview-path {
+  display: block;
+  font-family: var(--mdr-font-code);
+  font-size: 12.5px;
+  color: var(--mdr-fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.mdr-preview--footnote {
+  max-width: 360px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* LaTeX source                                                            */
+/* ---------------------------------------------------------------------- */
+
+.mdr-mathsource {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.mdr-mathsource-copy {
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--mdr-fg);
+  background-color: var(--mdr-bg-subtle);
+  border: 1px solid var(--mdr-border);
+  border-radius: var(--mdr-radius-sm);
+  cursor: pointer;
+}
+
+.mdr-mathsource-copy:hover {
+  background-color: var(--mdr-border);
+}
+
+.mdr-mathsource-copy.is-copied {
+  color: var(--mdr-code-copied-fg);
+}
+
+.mdr-mathsource-text {
+  max-width: 100%;
+  margin: 0;
+  font-family: var(--mdr-font-code);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* The one node every formula's aria-describedby points at (mathsource.js): there for assistive
+   technology, and for nobody else. */
+.mdr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* A rendered formula whose source is available says so on hover and takes focus from the
+   keyboard; mathsource.js adds the class only once it actually has the source. */
+.markdown-body .mdr-math-source {
+  cursor: pointer;
+  border-radius: var(--mdr-radius-sm);
+}
+
+.markdown-body .mdr-math-source:hover {
+  background-color: var(--mdr-bg-subtle);
+}
+
+.markdown-body .mdr-math-source:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdr-popover {
+    transition: none;
+  }
+}

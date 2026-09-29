@@ -6,6 +6,8 @@
 // else in this file (or codeblocks.js) probes `window.katex`/`window.mermaid` directly.
 
 import { log } from "./bridge.js";
+import { attachDiagramViewer, viewerState } from "./diagrams.js";
+import { registerMath } from "./mathsource.js";
 
 const KATEX_JS = "vendor/katex/katex.min.js";
 const KATEX_CSS = "vendor/katex/katex.min.css";
@@ -177,6 +179,9 @@ export async function enhanceMath(root) {
 function renderMathElement(el) {
   const displayMode = el.tagName === "DIV";
   const source = stripMathDelimiters(el.textContent ?? "");
+  // KaTeX replaces the source with layout markup, so it is handed to mathsource.js first — that
+  // is the only copy of it left once render() returns.
+  registerMath(el, source);
   try {
     katexApi.render(source, el, {
       displayMode,
@@ -382,6 +387,9 @@ async function renderDiagramFromSource(source, elementToReplace) {
     container.setAttribute("data-mdr-source", source);
     container.innerHTML = svg;
     if (typeof bindFunctions === "function") bindFunctions(container);
+    // A re-render (theme change, print mode) replaces a diagram the reader may have zoomed into;
+    // carrying the view over means the theme switch doesn't also throw their place away.
+    attachDiagramViewer(container, viewerState(elementToReplace));
     elementToReplace.replaceWith(container);
   } catch (err) {
     log("warn", `enhance: Mermaid render failed: ${describeError(err)}`);

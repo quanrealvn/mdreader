@@ -240,7 +240,7 @@
   user-select: none;
 }
 
-.markdown-body .mdr-code-copy {
+.markdown-body .mdr-code-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -255,14 +255,21 @@
   cursor: pointer;
 }
 
-.markdown-body .mdr-code-copy:hover {
+.markdown-body .mdr-code-button:hover {
   background-color: var(--mdr-code-btn-hover-bg);
   color: var(--mdr-fg);
 }
 
-.markdown-body .mdr-code-copy:focus-visible {
+.markdown-body .mdr-code-button:focus-visible {
   outline: 2px solid var(--mdr-accent);
   outline-offset: 2px;
+}
+
+/* The wrap and line-number toggles set a preference for the reader, not for this block, so a
+   pressed one has to read as "on, everywhere" rather than "this button is highlighted". */
+.markdown-body .mdr-code-toggle[aria-pressed="true"] {
+  color: var(--mdr-accent);
+  border-color: var(--mdr-accent);
 }
 
 .markdown-body .mdr-code-copy.is-copied {
@@ -350,6 +357,90 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* Lines: numbering and diff rows                                          */
+/* ---------------------------------------------------------------------- */
+
+/* codeblocks.js rewrites an enhanced block as one `span.mdr-code-line` per source line. The
+   lines carry no visual weight of their own, so a block with the preferences off looks exactly
+   as it did when it was a single text node. */
+.markdown-body .mdr-code-line {
+  display: block;
+}
+
+/* The numbers are CSS counters rather than text, so a selection — and everything a copy takes
+   with it, including the toolbar's own Copy button — is still just the code.
+   `text-indent`/`padding-left` give the number a gutter and keep wrapped continuation lines
+   aligned with the code rather than with the number. */
+:root.mdr-code-numbers .markdown-body pre > code[data-mdr-lines] {
+  counter-reset: mdr-code-line;
+}
+
+:root.mdr-code-numbers .markdown-body .mdr-code-line {
+  counter-increment: mdr-code-line;
+  padding-left: calc(var(--mdr-code-gutter, 2ch) + 2ch);
+  text-indent: calc(-1 * (var(--mdr-code-gutter, 2ch) + 2ch));
+}
+
+:root.mdr-code-numbers .markdown-body .mdr-code-line::before {
+  content: counter(mdr-code-line);
+  display: inline-block;
+  width: var(--mdr-code-gutter, 2ch);
+  margin-right: 1ch;
+  text-align: right;
+  text-indent: 0;
+  color: var(--mdr-fg-muted);
+  opacity: 0.75;
+  user-select: none;
+}
+
+/* Diff rows are always tinted, whatever the line-number preference is: a diff whose added and
+   removed lines look the same is the thing this replaces. The colours are the highlight.js
+   addition/deletion pair, which both themes already define. `box-shadow` paints the tint out to
+   the padding edge of the `pre`, which a background alone stops short of. */
+.markdown-body .mdr-code-line.is-added {
+  background-color: var(--mdr-hljs-addition-bg);
+  box-shadow: -16px 0 0 var(--mdr-hljs-addition-bg), 16px 0 0 var(--mdr-hljs-addition-bg);
+}
+
+.markdown-body .mdr-code-line.is-removed {
+  background-color: var(--mdr-hljs-deletion-bg);
+  box-shadow: -16px 0 0 var(--mdr-hljs-deletion-bg), 16px 0 0 var(--mdr-hljs-deletion-bg);
+}
+
+.markdown-body .mdr-code-line.is-added {
+  color: var(--mdr-hljs-addition-fg);
+}
+
+.markdown-body .mdr-code-line.is-removed {
+  color: var(--mdr-hljs-deletion-fg);
+}
+
+.markdown-body .mdr-code-line.is-hunk {
+  color: var(--mdr-hljs-attr);
+}
+
+.markdown-body .mdr-code-line.is-meta {
+  color: var(--mdr-fg-muted);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Wrapping                                                                */
+/* ---------------------------------------------------------------------- */
+
+:root.mdr-code-wrap .markdown-body pre {
+  white-space: pre-wrap;
+}
+
+:root.mdr-code-wrap .markdown-body pre code,
+:root.mdr-code-wrap .markdown-body pre tt {
+  white-space: pre-wrap;
+  /* The point of the toggle is that a minified line or a long URL stops needing a scrollbar, so
+     breaking inside a token is the wanted behaviour here. */
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------- */
 /* Print                                                                   */
 /* ---------------------------------------------------------------------- */
 
@@ -361,5 +452,10 @@
   .markdown-body pre {
     white-space: pre-wrap;
     word-wrap: break-word;
+  }
+
+  .markdown-body pre code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 }
