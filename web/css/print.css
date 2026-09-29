@@ -5,7 +5,15 @@
    before invoking the OS print/PDF action. */
 
 @media print {
-  :root {
+  /* Both selectors, and the second is the one that does the work.
+     `:root` alone is (0,1,0) and tokens.css sets the dark palette on `:root[data-theme="dark"]`, which is (0,2,0).
+     A media query carries no specificity, so for years a browser print of a dark page kept every dark value on
+     white paper: body text came out at 1.18:1 and a heading at 2.95:1, which is a blank sheet with a hint of
+     colour on it. The in-app Print button never showed it, because main.js sets `data-print` first and the
+     `:root[data-print]` block below matches that weight — but Ctrl+P does not go through main.js.
+     `:root[data-theme]` matches the weight, and print.css is imported last, so it wins. */
+  :root,
+  :root[data-theme] {
     color-scheme: light;
     --mdr-bg: #FFFFFF;
     --mdr-fg: #1F2328;
