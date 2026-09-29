@@ -1,0 +1,67 @@
+/* stickyheading.css — the strip that keeps the current section's heading at the top of the
+   reading pane (web/js/stickyheading.js).
+
+   The strip itself is a zero-height sticky anchor. It is the reading pane's first child, so it
+   has the pane's whole scrollable height to stick through, and it claims no height of its own,
+   so the article below still begins exactly where it began before. The bar inside it overflows
+   that nothing and paints over the text running past underneath. */
+
+.mdr-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 0;
+  /* Every word in the strip is a copy of something further up the document, so it must never
+     take a click, a caret or a text selection away from the real thing underneath it. */
+  pointer-events: none;
+}
+
+/* Out of sight, but still a box: the strip's own height is part of deciding whether it would be
+   standing over a heading, and `display: none` leaves nothing to measure. It takes no room
+   either way — the strip is zero-height and the bar inside it overflows. */
+.mdr-sticky--away {
+  visibility: hidden;
+}
+
+.mdr-sticky-bar {
+  border-bottom: 1px solid var(--mdr-border);
+  background: var(--mdr-bg);
+}
+
+.mdr-sticky-trail {
+  display: flex;
+  align-items: baseline;
+  gap: var(--mdr-space-2);
+  /* The article's own column, to the pixel: the strip stands in for a heading, so it has to
+     begin where that heading began. */
+  max-width: 860px;
+  margin: 0 auto;
+  padding: var(--mdr-space-2) var(--mdr-space-6);
+  /* One line, always. The strip's height is part of how it decides whether it is standing over
+     a real heading, and a chain that wrapped to a second line would move that decision as it
+     went. */
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--mdr-fg-muted);
+}
+
+.mdr-sticky-crumb {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The innermost heading is the answer; its ancestors are only there to make sense of it. */
+.mdr-sticky-crumb:last-child {
+  color: var(--mdr-fg);
+  font-weight: 600;
+}
+
+.mdr-sticky-sep {
+  flex: none;
+  color: var(--mdr-fg-muted);
+  opacity: 0.7;
+}

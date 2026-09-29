@@ -57,7 +57,11 @@
   .mdr-toc-backdrop,
   .mdr-code-toolbar,
   .mdr-diagram-tools,
-  .mdr-popover {
+  .mdr-popover,
+  /* The strip is a copy of a heading that is elsewhere on the page anyway, and on paper there
+     is no scrolling for it to keep up with. */
+  .mdr-sticky,
+  .mdr-fold-toggle {
     display: none !important;
   }
 
@@ -65,6 +69,12 @@
      opens these while the host's print mode is on, which covers the engines this selector — a
      recent Chromium addition — doesn't reach. */
   .markdown-frontmatter-more::details-content {
+    content-visibility: visible !important;
+  }
+
+  /* Same again for a section the reader folded: printing is asking for the document, not for
+     the shape they happened to have it in while they read it. */
+  .mdr-fold::details-content {
     content-visibility: visible !important;
   }
 
@@ -161,12 +171,19 @@
 :root[data-print] .mdr-toc-backdrop,
 :root[data-print] .mdr-code-toolbar,
 :root[data-print] .mdr-diagram-tools,
-:root[data-print] .mdr-popover {
+:root[data-print] .mdr-popover,
+:root[data-print] .mdr-sticky,
+:root[data-print] .mdr-fold-toggle {
   display: none !important;
 }
 
 :root[data-print] .markdown-frontmatter-more > summary {
   display: none;
+}
+
+/* See the @media print rule above: a folded section is still part of the document. */
+:root[data-print] .mdr-fold::details-content {
+  content-visibility: visible !important;
 }
 
 :root[data-print] .mdr-main {
