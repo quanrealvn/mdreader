@@ -1,3 +1,4 @@
+using MdReader.Core.Protocol;
 using System.Buffers;
 using System.Text;
 using AngleSharp.Dom;
@@ -185,9 +186,22 @@ internal static class SanitizedHtmlWriter
                 return false;
         }
 
+        // https, data:image/, and the scheme this process serves its own document host over. That last one is https
+        // on Windows and mdreader: on macOS, where the WKWebView backend registers its own scheme — hard-coding
+        // https here dropped every local image on that platform, and the resolver that would have served them was
+        // never asked for one.
         static bool IsSafeImageUrl(ReadOnlySpan<char> url) =>
             url.StartsWith("https:", StringComparison.OrdinalIgnoreCase)
-            || url.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase);
+            || url.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase)
+            || IsDocumentHostScheme(url);
+
+        static bool IsDocumentHostScheme(ReadOnlySpan<char> url)
+        {
+            var scheme = ProtocolConstants.WebScheme;
+            return url.Length > scheme.Length
+                   && url[scheme.Length] == ':'
+                   && url[..scheme.Length].Equals(scheme, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     /// <summary>

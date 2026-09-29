@@ -29,6 +29,18 @@ public static class ExportFileTypes
     private static readonly ExportFileType Png =
         new("image/png", "png", "Save diagram as PNG", "PNG image (*.png)|*.png");
 
+    /// <summary>"Export as HTML": the self-contained page the host builds from the document it is already showing.</summary>
+    /// <remarks>
+    /// Deliberately a member of its own and deliberately absent from <see cref="Find"/>. <c>Find</c> is the allow-list
+    /// behind the page's <c>saveFile</c> message — the list of things a <em>page</em> may ask the host to write to
+    /// disk. Adding <c>text/html</c> to it would hand any document that got markup past the sanitizer a way to post
+    /// its own bytes at a save dialog and have the host write an <c>.html</c> file the user then opens outside this
+    /// application's CSP. This type is only ever reached from the host's own menu command, where the bytes come from
+    /// <see cref="HtmlExporter"/> and never from the page.
+    /// </remarks>
+    public static ExportFileType Html { get; } =
+        new("text/html", "html", "Export as HTML", "HTML page (*.html)|*.html");
+
     /// <summary>Windows reserves these stems on every extension.</summary>
     private static readonly string[] ReservedNames =
     [
