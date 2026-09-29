@@ -22,6 +22,14 @@ internal static class SiteCatalog
 
     public const string CheatSheetPath = "/markdown-cheat-sheet";
 
+    /// <summary>
+    /// What reading JSON in the reader is, and the way into it. The reader's toolbar links here — the one link from
+    /// the app to this catalogue, and a deliberate one: the address is what the owner asked for, and a page is what
+    /// can be sent to somebody, found in a search, and read before they decide whether to put a config file into a
+    /// website. It carries no tool of its own; the tool is the reader, and the link below opens it with JSON chosen.
+    /// </summary>
+    public const string JsonPath = "/json";
+
     public static IReadOnlyList<SitePage> Pages { get; } =
     [
         new SitePage
@@ -278,6 +286,49 @@ internal static class SiteCatalog
 
         new SitePage
         {
+            Path = JsonPath,
+            Title = "JSON viewer — read a .json file as a folding tree",
+            Description = "Open a .json file and read it as a folding tree. Key order kept, numbers shown as "
+                + "written, and a parse error that names the line and the column.",
+            Heading = "JSON viewer",
+            Lead = "MdReader opens a .json file the way it opens a README: the document becomes a tree you can fold, "
+                + "with a contents panel, find, and printing to PDF.",
+            NavLabel = "JSON viewer",
+            Blurb = "Open a .json file and read it as a folding tree.",
+            ContentFile = "json.md",
+            // The reader is the tool; this page is what the reader's own JSON button leads to, so the way back is
+            // the page's first control rather than a line at the bottom of it.
+            Action = new SiteAction(ReaderPath + "?kind=json", "Open the reader with JSON chosen"),
+            Faqs =
+            [
+                new FaqItem(
+                    "Which files does it open as JSON?",
+                    "Any file whose name ends in .json, .jsonl, .ndjson or .geojson. The name is the whole rule, and "
+                    + ".map and .lock files are deliberately left out of it because nobody opens one to read."),
+                new FaqItem(
+                    "Can I paste JSON instead of opening a file?",
+                    "Yes. Paste it into the box and choose JSON on the control beside the Read button. Pasted text "
+                    + "carries no name, so that control is how you say what it is, and nothing tries to work it out "
+                    + "from the text on your behalf."),
+                new FaqItem(
+                    "Does it change my numbers?",
+                    "No. Every number is written out exactly as the file has it, so 1.50 stays 1.50 and a "
+                    + "nineteen-digit id keeps every one of its digits."),
+                new FaqItem(
+                    "Can I edit or reformat the JSON here?",
+                    "No. This is a reader: it formats nothing, minifies nothing and has no way to write a file back. "
+                    + "The editor you already have open does that, and a reader with a save button is a reader that "
+                    + "can lose your work."),
+                new FaqItem(
+                    "What happens to the file I open?",
+                    "The browser reads it and sends its text to MdReader's server, which renders it and sends HTML "
+                    + "back. It is held in memory for the length of that request and never written to disk, exactly "
+                    + "as a Markdown document is."),
+            ],
+        },
+
+        new SitePage
+        {
             Path = CheatSheetPath,
             Title = "Markdown cheat sheet — syntax and what it renders to",
             Description = "Every piece of Markdown syntax with the source, then the result: headings, lists, "
@@ -297,6 +348,12 @@ internal static class SiteCatalog
 
     /// <summary>The pages that carry a tool, in the order they are listed to a reader.</summary>
     public static IReadOnlyList<SitePage> Tools { get; } = [.. Pages.Where(page => page.IsTool)];
+
+    /// <summary>
+    /// The pages that explain rather than do. They are listed after the tools wherever the tools are listed, which
+    /// is what keeps a page nothing links to from existing.
+    /// </summary>
+    public static IReadOnlyList<SitePage> Guides { get; } = [ByPath(CheatSheetPath), ByPath(JsonPath)];
 
     /// <summary>
     /// Every URL the sitemap names: the reader first, then the generated pages. The reader appears here and nowhere

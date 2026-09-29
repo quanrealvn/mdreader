@@ -7,11 +7,18 @@
 // (editor pane, draggable divider, split ratio), file open / drop, and the toast. The file pane
 // beside all of it is folder.js; this module only lends it the tabs.
 //
-// Tabs: each tab is one document {id, title, markdown, scrollTop} (plus in-memory-only
+// Tabs: each tab is one document {id, title, markdown, kind, scrollTop} (plus in-memory-only
 // bookkeeping: docId/version for the protocol, a cached `payload` of host messages so
 // switching tabs never re-fetches). The workspace view — Edit, Split or Read — is a single
 // global preference (like the theme), not per tab: `mode` decides whether the editor pane,
 // the preview pane, or both are shown for whichever tab is active.
+//
+// `kind` is which renderer the server should use for a document: "markdown" or "json". It
+// belongs to the document rather than to the workspace, because one tab is a README and the next
+// is a config file. A file settles it by its name; pasted text has no name, so the reader says
+// which with the control in the editor bar. Nothing here reads the text to decide — a document
+// can be valid JSON and meaningful Markdown at the same time, and only the person who pasted it
+// knows which they meant. Either way the request carries the kind and the server renders it.
 //
 // Module-scoped state only (content ids can clobber window properties, §7.3).
 
@@ -28,12 +35,23 @@ const API_URL = "api/render";
 // Kept in step with WebLimitsOptions.DefaultMaxRequestBodyBytes so an oversized document is refused here
 // instead of being uploaded and refused there; RenderApiTests checks the two agree.
 const MAX_BODY_BYTES = 512 * 1024;
-const UNTITLED = "document.md"; // the title the server's renderer gives a document without an h1
+// The two readings the server has (RenderKinds.cs). Anything else is refused there with a 400,
+// so these strings are the whole vocabulary the page is allowed.
+const KIND_MARKDOWN = "markdown";
+const KIND_JSON = "json";
+const KINDS = [KIND_MARKDOWN, KIND_JSON];
+// The name the server renders each kind under, which is also the title it hands back for a
+// document with no title of its own. Neither is ever sent: the client picks a kind, the server
+// picks the name.
+const UNTITLED = { [KIND_MARKDOWN]: "document.md", [KIND_JSON]: "document.json" };
 const APP_NAME = "MdReader";
 const TOAST_MS = 3200;
 const SAVE_DEBOUNCE_MS = 400; // also used for the split view's live-preview debounce
 const PRINT_READY_TIMEOUT_MS = 1500; // fallback if `printModeReady` never arrives
-const TEXT_EXTENSIONS = /\.(md|markdown|mdown|mkd|mkdn|mdwn|txt|text)$/i;
+// MdReader.Core's JsonFileTypes.Extensions, exactly: the extension is the whole rule for what a
+// file is. .map and .lock are JSON too and are deliberately not here — nobody opens one to read.
+const JSON_EXTENSIONS = /\.(json|jsonl|ndjson|geojson)$/i;
+const TEXT_EXTENSIONS = /\.(md|markdown|mdown|mkd|mkdn|mdwn|txt|text|json|jsonl|ndjson|geojson)$/i;
 const DEFAULT_SPLIT_RATIO = 45;
 const MIN_SPLIT_RATIO = 20;
 const MAX_SPLIT_RATIO = 80;
@@ -182,13 +200,25 @@ function mintTabId(taken) {
   }
 }
 
-function createTab({ markdown = "", title = "Untitled", name = null } = {}) {
+/** Which reading a file name asks for. The name is the whole rule, and a name the reader chose
+ *  is the strongest thing there is to go on — see the note at the top about not sniffing text. */
+function kindForName(name) {
+  return name && JSON_EXTENSIONS.test(name) ? KIND_JSON : KIND_MARKDOWN;
+}
+
+/** One of the two kinds, whatever came in. Restored sessions and query strings both land here. */
+function asKind(value) {
+  return value === KIND_JSON ? KIND_JSON : KIND_MARKDOWN;
+}
+
+function createTab({ markdown = "", title = "Untitled", name = null, kind = KIND_MARKDOWN } = {}) {
   docIdCounter += 1;
   return {
     id: mintTabId(null),
     docId: docIdCounter,
     title,
     markdown,
+    kind: asKind(kind),
     name,
     scrollTop: 0,
     anchor: null,
@@ -228,6 +258,8 @@ function hydrateTab(raw, taken) {
     docId: docIdCounter,
     title: typeof raw.title === "string" && raw.title ? raw.title : "Untitled",
     markdown,
+    // A session written before JSON existed has no kind, and Markdown is what it meant.
+    kind: asKind(raw.kind),
     name: typeof raw.name === "string" && raw.name ? raw.name : null,
     scrollTop: typeof raw.scrollTop === "number" && raw.scrollTop >= 0 ? raw.scrollTop : 0,
     anchor:
@@ -250,7 +282,11 @@ function getActiveTab() {
 }
 
 function titleFromRender(renderTitle, tab) {
-  if (renderTitle && renderTitle !== UNTITLED) return renderTitle;
+  // "document.md" / "document.json" is the server saying the document had no title of its own,
+  // not a title. A JSON document never has one, so this is the usual answer for a pasted tree.
+  if (renderTitle && renderTitle !== UNTITLED[KIND_MARKDOWN] && renderTitle !== UNTITLED[KIND_JSON]) {
+    return renderTitle;
+  }
   if (tab.name) return tab.name;
   return "Untitled";
 }
@@ -362,6 +398,7 @@ function applyModeAttribute(newMode) {
 function syncUIToActiveTab() {
   const tab = getActiveTab();
   if (!tab) return;
+  updateKindButtons();
   if (mode !== "read") {
     input.value = tab.markdown || "";
     updateCount();
@@ -406,6 +443,43 @@ function setMode(newMode) {
   syncUIToActiveTab();
   // The capture above may have taken text straight out of the editor (the draft debounce
   // hadn't fired yet); without this it would only reach storage on pagehide.
+  scheduleSessionSave();
+}
+
+// ---------------------------------------------------------------------------------
+// Markdown / JSON: which renderer this document asks for
+// ---------------------------------------------------------------------------------
+
+/** Points the control, the placeholder and the label at the active tab's kind. */
+function updateKindButtons() {
+  const tab = getActiveTab();
+  const kind = tab ? tab.kind : KIND_MARKDOWN;
+  for (const button of document.querySelectorAll("[data-kind-choice]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.kindChoice === kind));
+  }
+  const what = kind === KIND_JSON ? "JSON" : "Markdown";
+  input.placeholder = "Paste " + what + " here";
+  input.setAttribute("aria-label", what + " to read");
+}
+
+/** Reads the active document the other way. The text is untouched; only what is made of it changes. */
+function setKind(newKind) {
+  const tab = getActiveTab();
+  if (!tab || !KINDS.includes(newKind) || tab.kind === newKind) return;
+  captureActiveTabState();
+  cancelInFlight();
+  tab.kind = newKind;
+  // The cached render is this text read the other way, so it is not this tab's render any more.
+  // Clearing `renderedText` with it is what stops the re-render below putting the reader back at
+  // an offset measured in a document that no longer exists: the same characters as a tree and as
+  // prose are different lengths, different headings, different everything.
+  tab.payload = null;
+  tab.renderedText = null;
+  tab.scrollTop = 0;
+  tab.anchor = null;
+  updateKindButtons();
+  if (mode !== "edit") renderTab(tab, tab.markdown);
+  renderTabStrip();
   scheduleSessionSave();
 }
 
@@ -686,7 +760,7 @@ tabAddButton.addEventListener("click", () => newTab());
 // folder" — one gesture, which is the price the browser charges for not letting a page read your
 // disk behind your back.
 function serializeTab(tab) {
-  return { id: tab.id, title: tab.title, markdown: tab.markdown, scrollTop: tab.scrollTop, anchor: tab.anchor, name: tab.name || null };
+  return { id: tab.id, title: tab.title, markdown: tab.markdown, kind: tab.kind, scrollTop: tab.scrollTop, anchor: tab.anchor, name: tab.name || null };
 }
 
 function scheduleSessionSave() {
@@ -860,7 +934,10 @@ async function renderTab(tab, text, { continues = false } = {}) {
   // showing the last good version of text it no longer holds.
   tab.payload = null;
 
-  const body = JSON.stringify({ markdown: text });
+  // `kind` is how the server is told which renderer to use; it picks the document name itself
+  // from it (RenderKinds), so nothing the document or its file name contains reaches that
+  // decision. An unknown kind is a 400 there, which is why only the two constants are ever sent.
+  const body = JSON.stringify({ markdown: text, kind: tab.kind });
   if (new Blob([body]).size > MAX_BODY_BYTES) {
     if (tab.id === activeId) showError(413, null);
     return;
@@ -980,13 +1057,13 @@ function showError(status, payload) {
 
 function renderFromInput() {
   const text = input.value;
+  const tab = getActiveTab();
+  if (!tab) return;
   if (text.trim().length === 0) {
-    toast("Paste some Markdown first.");
+    toast(tab.kind === KIND_JSON ? "Paste some JSON first." : "Paste some Markdown first.");
     input.focus();
     return;
   }
-  const tab = getActiveTab();
-  if (!tab) return;
   if (mode === "edit") applyModeAttribute("read"); // reveal the preview; always render below
   renderTab(tab, text);
 }
@@ -1081,7 +1158,7 @@ async function openFiles(fileList) {
     }
   }
   if (valid.length === 0) {
-    toast(hadBadType ? "Choose a .md, .markdown or .txt file." : "This file is over 512 KB.");
+    toast(hadBadType ? "Choose a .md, .markdown, .txt or .json file." : "This file is over 512 KB.");
     return;
   }
 
@@ -1096,7 +1173,9 @@ async function openFiles(fileList) {
     }
     let tab = tabs.find((t) => t.name === file.name && t.markdown === text);
     if (!tab) {
-      tab = createTab({ markdown: text, name: file.name, title: file.name });
+      // The name decides how it is read: a .json opened or dropped is a JSON document, with no
+      // question asked and nothing to turn on first.
+      tab = createTab({ markdown: text, name: file.name, title: file.name, kind: kindForName(file.name) });
       tabs.push(tab);
     }
     if (firstTabId === null) firstTabId = tab.id;
@@ -1136,7 +1215,7 @@ function openFolderFile({ path, name, session, text }) {
   // from doubling every tab the reader still has.
   let tab = tabs.find((t) => t.name === name && t.markdown === text);
   if (!tab) {
-    tab = createTab({ markdown: text, name, title: name });
+    tab = createTab({ markdown: text, name, title: name, kind: kindForName(name) });
     tabs.push(tab);
   }
   tab.folderPath = path;
@@ -1262,7 +1341,7 @@ attachHost((message, files) => {
     case "dropText":
       // The desktop app fetches a dropped address. A browser tab can't (its own CSP allows same-origin
       // requests only, and most servers send no CORS headers), so it says what a drop can be instead.
-      toast("Drop a Markdown file to open it.");
+      toast("Drop a Markdown or JSON file to open it.");
       break;
     case "rendered":
       onRendered(message);
@@ -1565,6 +1644,10 @@ for (const button of document.querySelectorAll("[data-mode-choice]")) {
   button.addEventListener("click", () => setMode(button.dataset.modeChoice));
 }
 
+for (const button of document.querySelectorAll("[data-kind-choice]")) {
+  button.addEventListener("click", () => setKind(button.dataset.kindChoice));
+}
+
 systemDark.addEventListener("change", () => {
   if (themeChoice === "system") postTheme();
 });
@@ -1574,6 +1657,22 @@ tocToggleButton.addEventListener("click", () => {
 });
 
 printButton.addEventListener("click", requestPrint);
+
+// The toolbar's JSON link. links.js is the desktop's code and must go on behaving as it does
+// there, and what it does is take every `a[href]` in the page for document content: it cancels the
+// click and hands the address to the host, which opens http(s) addresses in a new tab and says
+// "Only web links can be opened here." to everything else. That is exactly right for a link inside
+// a document, and wrong for one that is part of the app's own chrome — the button simply did
+// nothing, which is how a browser probe found it. Stopping the event at the element, in the target
+// phase, means the document-level listener never sees it and the browser's own default is left
+// alone: the link navigates, middle click still opens it in a tab, and no rendered document can
+// reach this because no rendered document is this element.
+const jsonLink = document.getElementById("mdr-web-json");
+if (jsonLink) {
+  const keepFromLinksJs = (event) => event.stopPropagation();
+  jsonLink.addEventListener("click", keepFromLinksJs);
+  jsonLink.addEventListener("auxclick", keepFromLinksJs);
+}
 
 document.getElementById("mdr-web-new").addEventListener("click", () => newTab());
 document.getElementById("mdr-web-home").addEventListener("click", () => setMode("edit"));
@@ -1631,9 +1730,44 @@ document.addEventListener("keydown", (event) => {
 // start
 // ---------------------------------------------------------------------------------
 
+/**
+ * `?kind=json` — how /json hands someone into the reader with JSON already chosen.
+ *
+ * It applies to the document in front of them when that document is empty, and otherwise opens a
+ * new tab, because arriving from a page about JSON is not a reason to re-read the README somebody
+ * already had open. Then it is taken out of the address: a reload is a reload, not a second tab.
+ */
+function applyKindFromAddress() {
+  if (params.get("kind") !== KIND_JSON) return;
+
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("kind");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  } catch {
+    // History is unavailable or the address is not one we can rewrite: the parameter stays in it,
+    // which costs a spare tab on the next reload and nothing else.
+  }
+
+  const current = getActiveTab();
+  if (current && current.markdown.trim().length === 0) {
+    current.kind = KIND_JSON;
+  } else {
+    const tab = createTab({ kind: KIND_JSON });
+    tabs.push(tab);
+    activeId = tab.id;
+    tab.lastActive = ++activityCounter;
+  }
+  // Either way the reader is now in front of an empty document, which needs the editor and the
+  // control beside it rather than a blank preview.
+  if (mode === "read") applyModeAttribute("edit");
+  scheduleSessionSave();
+}
+
 updateChoiceButtons();
 updateTocButton();
 
 initSession();
+applyKindFromAddress();
 renderTabStrip();
 syncUIToActiveTab();

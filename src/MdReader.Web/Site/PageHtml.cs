@@ -60,13 +60,13 @@ internal static class PageHtml
 
         if (page.Path == SiteCatalog.AboutPath)
         {
-            WriteToolList(builder, "Tools", SiteCatalog.Tools.Append(SiteCatalog.ByPath(SiteCatalog.CheatSheetPath)));
+            WriteToolList(builder, "Tools", SiteCatalog.Tools.Concat(SiteCatalog.Guides));
         }
         else if (page.IsTool)
         {
             WriteToolList(builder, "Other tools", SiteCatalog.Tools
                 .Where(other => other.Path != page.Path)
-                .Append(SiteCatalog.ByPath(SiteCatalog.CheatSheetPath)));
+                .Concat(SiteCatalog.Guides));
         }
 
         WriteFaq(builder, page);
@@ -212,6 +212,14 @@ internal static class PageHtml
             .Append("</ol>\n</nav>\n")
             .Append("<h1>").Append(HtmlText.Escape(page.Heading)).Append("</h1>\n")
             .Append("<p class=\"mdr-site-lead\">").Append(HtmlText.Escape(page.Lead)).Append("</p>\n");
+
+        if (page.Action is { } action)
+        {
+            builder.Append("<p class=\"mdr-site-cta\">")
+                .Append("<a class=\"mdr-site-button mdr-site-button--primary\" href=\"")
+                .Append(HtmlText.Escape(action.Href)).Append("\">")
+                .Append(HtmlText.Escape(action.Label)).Append("</a></p>\n");
+        }
     }
 
     private static void WriteFooter(StringBuilder builder)
@@ -231,6 +239,7 @@ internal static class PageHtml
             .Append("<li><a href=\"").Append(SiteCatalog.ReaderPath).Append("\">The reader</a></li>\n")
             .Append("<li><a href=\"").Append(SiteCatalog.AboutPath).Append("\">About MdReader</a></li>\n")
             .Append("<li><a href=\"").Append(SiteCatalog.CheatSheetPath).Append("\">Markdown cheat sheet</a></li>\n")
+            .Append("<li><a href=\"").Append(SiteCatalog.JsonPath).Append("\">JSON viewer</a></li>\n")
             .Append("<li><a href=\"").Append(Repository).Append("\" rel=\"noopener\">Source on GitHub</a></li>\n")
             .Append("</ul>\n</nav>\n</div>\n")
             .Append("<p class=\"mdr-site-colophon\">MdReader is open source under the MIT license. ")

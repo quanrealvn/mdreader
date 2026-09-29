@@ -86,6 +86,15 @@
         <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/></svg>
         <span class="mdr-web-label">PDF</span>
       </button>
+      <!-- /json is the page that explains reading JSON and hands you back here with JSON already
+           chosen (?kind=json). A link and not a button, because it is a navigation: middle click,
+           open in a new tab and the address in the status bar all come free, and none of them
+           would if a script did the navigating. webapp.js keeps links.js off this one click —
+           see the note there; every other anchor in the page belongs to a document. -->
+      <a id="mdr-web-json" class="mdr-web-button" href="/json" title="Reading JSON in MdReader">
+        <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H8a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h1"/><path d="M15 4h1a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2h-1"/></svg>
+        <span class="mdr-web-label">JSON</span>
+      </a>
       <!-- Shown only when the browser offers an install (beforeinstallprompt) and the visitor hasn't waved it away. -->
       <button id="mdr-web-install" class="mdr-web-button" type="button" title="Install MdReader as an app" hidden>
         <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
@@ -138,17 +147,24 @@
               <span>Read</span>
               <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
             </button>
-            <button id="mdr-web-open" class="mdr-web-button" type="button" title="Open a .md, .markdown or .txt file">
+            <button id="mdr-web-open" class="mdr-web-button" type="button" title="Open a .md, .markdown, .txt or .json file">
               <svg class="mdr-web-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3"/></svg>
               <span>Open file</span>
             </button>
+            <!-- A file says what it is in its name; pasted text says nothing, so this is where the
+                 reader says it instead. It is per document, not a global preference: one tab can
+                 be a README and the next a config file. -->
+            <div class="mdr-web-segmented" role="group" aria-label="Read the text as">
+              <button type="button" data-kind-choice="markdown" aria-pressed="true">Markdown</button>
+              <button type="button" data-kind-choice="json" aria-pressed="false">JSON</button>
+            </div>
             <span class="mdr-web-spacer"></span>
             <span id="mdr-web-count" class="mdr-web-count" aria-live="off"></span>
             <button id="mdr-web-clear" class="mdr-web-button mdr-web-button--quiet" type="button">Clear</button>
           </div>
         </div>
 
-        <input id="mdr-web-file" type="file" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdwn,.txt,text/markdown,text/plain" multiple hidden>
+        <input id="mdr-web-file" type="file" accept=".md,.markdown,.mdown,.mkd,.mkdn,.mdwn,.txt,.json,.jsonl,.ndjson,.geojson,text/markdown,text/plain,application/json" multiple hidden>
       </div>
     </section>
 

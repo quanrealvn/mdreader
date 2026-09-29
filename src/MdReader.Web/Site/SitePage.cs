@@ -36,6 +36,13 @@ internal enum SiteSchema
 internal sealed record FaqItem(string Question, string Answer);
 
 /// <summary>
+/// The one link a page leads with, under its lead sentence, for a page whose point is to hand the reader somewhere
+/// rather than to carry a tool of its own. It is written into the HTML like every other link here, so it is there
+/// with scripting off and a crawler can follow it.
+/// </summary>
+internal sealed record SiteAction(string Href, string Label);
+
+/// <summary>
 /// A page the site serves: its URL, the text in its head, the Markdown file it renders as its body, and the widget it
 /// carries. Everything a crawler reads comes from here; <see cref="SiteCatalog"/> holds the list.
 /// </summary>
@@ -69,6 +76,9 @@ internal sealed record SitePage
     public string? SampleFile { get; init; }
 
     public SiteTool Tool { get; init; } = SiteTool.None;
+
+    /// <summary>The link under the lead, when the page has one.</summary>
+    public SiteAction? Action { get; init; }
 
     /// <summary>
     /// Puts a list of the body's own headings above it. Worth it on a long reference page and noise on a short one,
