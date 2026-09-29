@@ -164,7 +164,10 @@ internal sealed class WikiLinkParser : InlineParser
     /// after the <c>[</c> is a child of it — walking the previous siblings as well finds nothing extra and costs a
     /// pass over every inline already in the paragraph, which makes this quadratic in the number of links. A first
     /// version did exactly that: 4,000 wiki links took 127 ms and 16,000 took 1,139 ms, against 38 ms and 168 ms for
-    /// the same number of ordinary links. The nesting limit caps this walk at 128.</para>
+    /// the same number of ordinary links. The walk is not bounded by anything — Markdig's 128-level nesting limit
+    /// applies to rendered output, not to the open delimiter stack, and a paragraph of 2,000 unclosed brackets gives
+    /// a spine 2,001 deep. It costs nothing in practice: at that depth Markdig's own work already dominates, and the
+    /// guard measures the same either way (238 ms with it, 263 ms without, on 8,000 attempts at depth 3,000).</para>
     /// </remarks>
     private static bool InsideAnUnclosedLink(InlineProcessor processor)
     {
@@ -204,9 +207,10 @@ internal sealed class WikiLinkParser : InlineParser
             return false;
         }
 
-        var fragment = heading.IsEmpty
-            ? string.Empty
-            : FragmentSeparator + LinkHelper.UrilizeAsGfm(heading);
+        // A heading of nothing but punctuation or emoji slugs to the empty string, and "Guide.md#" is a worse
+        // answer than "Guide.md": a bare # is a link to the top of the page dressed up as a link to a section.
+        var slug = heading.IsEmpty ? string.Empty : LinkHelper.UrilizeAsGfm(heading);
+        var fragment = slug.Length == 0 ? string.Empty : FragmentSeparator + slug;
 
         url = path.IsEmpty ? fragment : Encode(WithMarkdownExtension(path)) + fragment;
 
@@ -313,12 +317,18 @@ internal sealed class WikiLinkParser : InlineParser
         return false;
     }
 
+    /// <remarks>
+    /// Deliberately no source-code extensions. ".js" would make <c>[[Node.js]]</c> point at a JavaScript file rather
+    /// than the note called "Node.js", and the reader opens only Markdown, so a link to <c>script.py</c> and a link
+    /// to <c>script.py.md</c> are refused alike — the note reading is the one that can ever be right.
+    /// </remarks>
     private static readonly string[] OtherFileTypes =
     [
-        ".txt", ".rtf", ".pdf", ".csv", ".tsv", ".json", ".xml", ".yml", ".yaml", ".toml", ".html", ".htm",
-        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".avif",
-        ".mp3", ".wav", ".ogg", ".mp4", ".webm", ".mov",
-        ".zip", ".gz", ".7z", ".tar",
+        ".txt", ".rtf", ".pdf", ".csv", ".tsv", ".json", ".xml", ".yml", ".yaml", ".toml", ".ini", ".log", ".sql",
+        ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp", ".epub", ".ics", ".eml",
+        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".avif", ".heic", ".tiff",
+        ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".mp4", ".webm", ".mov", ".mkv", ".avi",
+        ".zip", ".gz", ".7z", ".tar", ".rar", ".bz2", ".xz", ".exe", ".msi", ".deb", ".rpm",
     ];
 
     /// <summary>
