@@ -36,7 +36,8 @@ internal static class MarkdownPipelineFactory
             .Use<FrontMatterExtension>()        // front matter as a header card instead of nothing (§4.1)
             .UsePipeTables(new PipeTableOptions { UseGfmRules = true })
             .UseFootnotes()
-            .Use<HeadingIdExtension>();         // = UseAutoIdentifiers(AutoIdentifierOptions.GitHub), in linear time
+            .Use<HeadingIdExtension>()          // = UseAutoIdentifiers(AutoIdentifierOptions.GitHub), in linear time
+            .Use<WikiLinkExtension>();          // [[Another note]] becomes an ordinary relative link (§4.1)
         if (autoLinks)
         {
             builder = builder.UseAutoLinks();
