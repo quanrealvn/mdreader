@@ -1473,7 +1473,7 @@ if (installButton) {
  *
  * Nothing is lost in that reload. It fires `pagehide`, which writes down the open tabs, their
  * text and where the reader had got to, and the page restores all of it on the way back up
- * (tests/MdReader.Web.Probes/update-keeps-the-place.mjs drives exactly this).
+ * (a browser probe drives exactly this and checks the document and the scroll position come back).
  *
  * The worker still does not call skipWaiting in its own install handler. It waits to be told,
  * here, once the new shell is completely cached - so a page always has index.html, the CSS and
@@ -1496,8 +1496,7 @@ if ("serviceWorker" in navigator) {
     // The reload below fires `pagehide`, and that handler takes down where the reader is and
     // saves. This save is belt and braces for the draft debounce, and measurably changes
     // nothing on its own: a build without it keeps the reader's place across an update just
-    // the same (tests/MdReader.Web.Probes/update-keeps-the-place.mjs), and a build with
-    // neither is what actually loses it.
+    // the same, and a build with neither is what actually loses it.
     persistSession();
     window.location.reload();
   });

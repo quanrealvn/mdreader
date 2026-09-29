@@ -28,11 +28,11 @@ internal static class SiteCatalog
         {
             Path = AboutPath,
             Title = "About MdReader — what it renders, and where your text goes",
-            Description = "What MdReader renders, where the text you paste goes, how raw HTML is handled, and what "
-                + "the Windows app adds to the browser version.",
+            Description = "What MdReader renders, where the text you paste goes, how raw HTML is handled, and how "
+                + "the browser version relates to the desktop one.",
             Heading = "About MdReader",
-            Lead = "MdReader renders Markdown in a browser tab and in a Windows app. Both use the same renderer, "
-                + "so a document looks the same in either one.",
+            Lead = "MdReader renders Markdown in a browser tab. The same renderer runs in a desktop app, so a "
+                + "document looks the same in either one.",
             NavLabel = "About",
             Blurb = "What MdReader is, and where the text you paste goes.",
             ContentFile = "about.md",

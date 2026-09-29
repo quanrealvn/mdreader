@@ -10,13 +10,13 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <Deterministic>true</Deterministic>
     <!-- Every shipped assembly otherwise carries the absolute path of its .pdb from the machine that built it
-         ("C:\Code\markdownReader\src\MdReader.Ui\obj\Release\...\MdReader.pdb" in the debug directory, and the same
+         ("<repo>\src\MdReader.Web\obj\Release\...\MdReader.Web.pdb" in the debug directory, and the same
          prefix in the .pdb's own document names). That is the build machine's directory layout in a public download,
          and it makes two builds of the same source from different folders differ. Mapping the repository root to
          "/_/" removes it; SourceLink still resolves sources, because it rewrites its own document map the same way. -->
     <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
-    <!-- Product metadata (WP11). installer\build.ps1 reads Version (and passes -p:Version=<x> to publish); the installer takes
-         publisher and copyright from MdReader.exe. AssemblyVersion/FileVersion derive from Version (1.0.0 -> 1.0.0.0). -->
+    <!-- Product metadata. The desktop repository's installer reads Version from here and passes -p:Version=<x> to
+         publish; AssemblyVersion/FileVersion derive from it (1.0.0 -> 1.0.0.0). Keep the two repositories in step. -->
     <Version>1.4.0</Version>
     <Company>quanrealvn</Company>
     <Product>MdReader</Product>

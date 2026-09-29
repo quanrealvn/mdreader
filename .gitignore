@@ -39,15 +39,9 @@ packages/
 # Publish / packaging output
 publish/
 artifacts/
-installer/output/
 AppPackages/
 *.msix
 *.appx
-
-# VS Code extension
-vscode-extension/node_modules/
-vscode-extension/out/
-vscode-extension/*.vsix
 
 # Node
 node_modules/

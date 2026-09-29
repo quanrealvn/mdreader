@@ -16,7 +16,3 @@
 
 # Vendored third-party files stay byte-exact
 web/vendor/** -text
-
-# Sample documents are test fixtures: keep LF everywhere so golden tests are deterministic
-docs/samples/** text eol=lf
-docs/samples/**/*.png binary

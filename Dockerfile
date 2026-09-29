@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # MdReader web version, built by the fly.io remote builder (`fly deploy`).
-# Only the cross-platform projects are built: MdReader.slnx also contains the Windows-only WPF app.
+# The image needs only MdReader.Web and MdReader.Core; the reader page under web/ and webapp/ is copied in beside them.
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ENV DOTNET_NOLOGO=1 \

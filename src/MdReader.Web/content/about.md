@@ -19,9 +19,8 @@ took. No part of the document goes into it.
 Your browser keeps your open tabs in local storage, so they are still there when you come
 back. That copy never leaves your machine, and clearing site data removes it.
 
-If you would rather nothing left your machine at all, the Windows app renders on your own
-machine. The only requests MdReader makes are for images a document links to, the same as
-a browser would.
+The only requests MdReader makes are for images a document links to, the same as a browser
+would.
 
 ## Raw HTML is kept, and then cleaned
 
@@ -37,16 +36,17 @@ document as a second layer, so a miss in the sanitizer would not get to run eith
 
 ## The desktop app
 
-MdReader started as a Windows app, and that is still where it does the most.
-Double-click a `.md` file and it opens in a tab. A file reloads when you save it, so the
-window can sit beside your editor. Tabs come back the next time you open it. There is a
-contents panel you can resize, filter and sort, and a split view with the source on one
-side. It also has find, zoom, printing and PDF export.
+There is a Windows version of MdReader, and you cannot download it here at the moment. It is
+worth knowing about anyway: it is where the reading features land first, and the browser
+version is measured against it.
+
+MdReader started as that Windows app, and that is still where it does the most. Double-click a
+`.md` file and it opens in a tab. A file reloads when you save it, so the window can sit
+beside your editor. Tabs come back the next time you open it. There is a contents panel you
+can resize, filter and sort, and a split view with the source on one side. It also has find,
+zoom, printing and PDF export.
 
 {{figure:windows}}
-
-The desktop app is not something you can download here at the moment. The browser version
-is the public one, and it renders every document the same way.
 
 ## The same renderer on both sides
 
