@@ -128,9 +128,12 @@ internal static class RenderEndpoint
         }
 
         string? markdown;
+        string? kind = null;
         try
         {
-            markdown = JsonSerializer.Deserialize(body, WebJsonContext.Default.RenderRequest)?.Markdown;
+            var rendered = JsonSerializer.Deserialize(body, WebJsonContext.Default.RenderRequest);
+            markdown = rendered?.Markdown;
+            kind = rendered?.Kind;
         }
         catch (JsonException)
         {
@@ -143,6 +146,16 @@ internal static class RenderEndpoint
             logger.LogInformation("Render rejected: {Bytes} bytes of invalid JSON or no \"markdown\" string (400)", body.Length);
             await WriteErrorAsync(context, StatusCodes.Status400BadRequest, "badRequest",
                 "The request must be a JSON object with a \"markdown\" string.");
+            return;
+        }
+
+        // An unknown kind is refused rather than quietly read as Markdown: a client that asks for something this
+        // server does not have should be told so, not handed a JSON document rendered as prose.
+        if (!RenderKinds.IsKnown(kind))
+        {
+            logger.LogInformation("Render rejected: unknown kind (400)");
+            await WriteErrorAsync(context, StatusCodes.Status400BadRequest, "badRequest",
+                "\"kind\" must be \"markdown\" or \"json\" when it is given.");
             return;
         }
 
@@ -193,7 +206,7 @@ internal static class RenderEndpoint
             try
             {
                 var version = Interlocked.Increment(ref s_version);
-                var renderContext = CreateRenderContext(limits);
+                var renderContext = CreateRenderContext(limits, kind);
                 (messages, timings) = await Task.Run(() =>
                 {
                     var result = renderer.Render(markdown, renderContext, renderToken);
@@ -260,8 +273,8 @@ internal static class RenderEndpoint
     /// element ceiling the desktop shells don't need: the container has 512 MB, and Core's size-derived budget alone
     /// would let a document at the size limit build a DOM several times that.
     /// </summary>
-    internal static RenderContext CreateRenderContext(WebLimitsOptions limits) =>
-        new("/document.md", "/")
+    internal static RenderContext CreateRenderContext(WebLimitsOptions limits, string? kind = null) =>
+        new(RenderKinds.DocumentNameFor(kind), "/")
         {
             AllowLocalResources = false,
             MaxElements = limits.MaxRenderElements > 0 ? limits.MaxRenderElements : null,

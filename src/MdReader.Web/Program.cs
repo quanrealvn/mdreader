@@ -31,7 +31,10 @@ builder.WebHost.ConfigureKestrel(kestrel =>
 });
 
 builder.Services.Configure<WebLimitsOptions>(limitsSection);
-builder.Services.AddSingleton<IMarkdownRenderer>(_ => new MarkdownRenderer(PhysicalFileSystemProbe.Instance));
+// DocumentRenderer, not MarkdownRenderer: it picks the renderer from the document name, which is how a request
+// asking for "json" gets JSON. The public pages go through the same instance and are named .md, so they are
+// unaffected — the decision is per document, not per server.
+builder.Services.AddSingleton<IMarkdownRenderer>(_ => new DocumentRenderer(PhysicalFileSystemProbe.Instance));
 builder.Services.AddSingleton<RenderGate>();
 builder.Services.AddSingleton<RenderCostLimiter>();
 builder.Services.AddSingleton<ServiceWorkerScript>();
