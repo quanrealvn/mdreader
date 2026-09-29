@@ -1,0 +1,339 @@
+/*
+ * json.css — the JSON document view: the collapsible tree MdReader.Core renders for a `.json`
+ * file, the error view a broken one gets, and the document's own text when it is past a budget.
+ *
+ * The markup is written by `MdReader.Core.Json.JsonTreeWriter`/`JsonRenderer` and is the only
+ * thing this file may assume:
+ *
+ *   <div class="json-doc">
+ *     <details class="json-node" open=""><summary class="json-summary">
+ *         <span class="json-key">database</span>: <span class="json-size">{3 keys}</span></summary>
+ *       <ul class="json-object">
+ *         <li class="json-item"><span class="json-key">port</span>: <span class="json-number">5432</span></li>
+ *         <li class="json-item"><span class="json-index">0</span>: <span class="json-string">"a"</span></li>
+ *         <li class="json-item"><span class="json-key">tags</span>: <span class="json-empty">[]</span></li>
+ *       </ul></details>
+ *     <p class="json-notice">…</p> | <p class="json-error-summary">…</p>
+ *     <pre class="json-error-context">…</pre>
+ *     <pre class="json-source">…</pre>
+ *   </div>
+ *
+ * The classes have no `mdr-` prefix because the sanitizer strips that prefix from content, so
+ * everything here is scoped under `.markdown-body` — like frontmatter.css and for the same
+ * reason. The scoping has a second job: markdown.css draws a document's own `<details>` as a
+ * bordered card and its own `<ul>` with bullets and a 2em indent, both of which are right for
+ * markup an author wrote and quite wrong for a value tree, so each selector below carries enough
+ * classes to outweigh the rule it is undoing.
+ *
+ * Colour: JSON-PLAN, "Colour". By depth is the default and by type is the alternative, because
+ * type is already answered without colour — a string carries its quotes, a number does not, and
+ * `null` is dim and italic — while "where am I, nine levels down" is answered by nothing else.
+ * The reader's choice is `data-json-colour="type"` on the root element, which a setting can flip
+ * with no help from this file and no host message; absent, depth.
+ */
+
+/* ---------------------------------------------------------------------- */
+/* The view                                                                */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body .json-doc {
+  /* The level colour, inherited by everything in a container and re-declared per level below.
+     Set here as well so that a document that is one bare scalar, and the root row of every other
+     one, still has a level. */
+  --mdr-json-level: var(--mdr-json-depth-1);
+
+  /* The twisty Chromium draws inside a <summary> (its own `::marker`, `list-style-position:
+     inside`). Rows that cannot be opened are inset by the same amount, so keys line up in one
+     column whether or not the value has children. The probe measures both and fails if they
+     drift apart. */
+  --mdr-json-twisty: 1.1em;
+
+  /* How far a value that wraps hangs under itself, rather than sliding back under its key. */
+  --mdr-json-hang: 2ch;
+}
+
+/* The tree, the source and the excerpt are the document's own characters: monospace, so that a
+   number lines up with the number above it and the caret under the character it points at. The
+   prose this view writes itself — the error sentence and the over-budget notice — is not, and
+   stays in the page's text font at the page's size. Declared on the root node only: `em` on a
+   node nested inside another would multiply, and a level-6 key would be half the size of a
+   level-1 one. */
+.markdown-body .json-doc > .json-node,
+.markdown-body .json-doc > .json-string,
+.markdown-body .json-doc > .json-number,
+.markdown-body .json-doc > .json-boolean,
+.markdown-body .json-doc > .json-null,
+.markdown-body .json-doc > .json-empty {
+  font-family: var(--mdr-font-code);
+  font-size: 0.875em;
+  line-height: 1.6;
+  tab-size: 4;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Containers: <details> per object and array                              */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body .json-doc .json-node {
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+}
+
+/* A nested node sits inside a row that is already indented for its own twisty and hanging
+   indent; pulling it back by exactly that puts its summary on the same left edge as the scalar
+   rows either side of it. */
+.markdown-body .json-doc .json-item > .json-node {
+  margin-left: calc(-1 * (var(--mdr-json-twisty) + var(--mdr-json-hang)));
+  text-indent: 0;
+}
+
+.markdown-body .json-doc .json-node > *:not(summary),
+.markdown-body .json-doc .json-node > *:last-child {
+  padding: 0;
+}
+
+.markdown-body .json-doc .json-summary {
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--mdr-radius-sm);
+  font-weight: inherit;
+  cursor: pointer;
+  color: var(--mdr-json-quiet);
+  /* The row's own line: it must not take the hanging indent of the <li> around it, or every
+     twisty would sit two characters to the left of every other row. */
+  text-indent: 0;
+}
+
+.markdown-body .json-doc .json-node[open] > .json-summary {
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+/* The one exception: the root summary is the document's header — it carries nothing but the
+   size, and a rule under it separates the header from the first row. */
+.markdown-body .json-doc > .json-node[open] > .json-summary {
+  margin-bottom: var(--mdr-space-2);
+  padding-bottom: var(--mdr-space-2);
+  border-bottom: 1px solid var(--mdr-json-rule);
+  border-radius: 0;
+}
+
+/* The UA's own disclosure triangle, not a `::before` of ours: generated content lands in the
+   accessible name, so a drawn triangle would have a screen reader announce the shape of the
+   marker before the key (the same reasoning as frontmatter.css). */
+.markdown-body .json-doc .json-summary::marker {
+  color: var(--mdr-json-quiet);
+}
+
+.markdown-body .json-doc .json-summary:hover {
+  background-color: var(--mdr-json-card);
+}
+
+.markdown-body .json-doc .json-summary:focus-visible {
+  outline: 2px solid var(--mdr-accent);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Rows, and the rail that makes a level visible without colour            */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body .json-doc ul {
+  margin: 0 0 0 0.45em;          /* the rail lands under the twisty of the row above it */
+  padding: 0 0 0 1em;
+  list-style: none;
+  border-left: 1px solid;
+  /* Tinted with the level's own colour: the guide says which level it is a second time, and it
+     keeps saying it when the colour is gone — a rail is a position, and position is depth. */
+  border-left-color: color-mix(in oklab, var(--mdr-json-level) 40%, transparent);
+}
+
+.markdown-body .json-doc .json-item {
+  margin: 0;
+  padding-left: calc(var(--mdr-json-twisty) + var(--mdr-json-hang));
+  text-indent: calc(-1 * var(--mdr-json-hang));
+  /* The separators — the colon after a key, the comma-free spacing — are punctuation and read
+     better quiet; every part of the row that carries meaning colours itself below. */
+  color: var(--mdr-json-quiet);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Colour by depth — the default                                           */
+/* ---------------------------------------------------------------------- */
+
+/* One rule per level. The only <ul> inside a JSON document is a container, so counting them is
+   counting the levels; each rule outweighs the one above it by a single element. Past the
+   eighth the ramp holds rather than starting again, because a level 9 that looks like a level 1
+   is worse than a level 9 that looks deep. */
+.markdown-body .json-doc ul { --mdr-json-level: var(--mdr-json-depth-1); }
+.markdown-body .json-doc ul ul { --mdr-json-level: var(--mdr-json-depth-2); }
+.markdown-body .json-doc ul ul ul { --mdr-json-level: var(--mdr-json-depth-3); }
+.markdown-body .json-doc ul ul ul ul { --mdr-json-level: var(--mdr-json-depth-4); }
+.markdown-body .json-doc ul ul ul ul ul { --mdr-json-level: var(--mdr-json-depth-5); }
+.markdown-body .json-doc ul ul ul ul ul ul { --mdr-json-level: var(--mdr-json-depth-6); }
+
+/* From here down the indent tightens as well. Eight levels at the full step is already 9em of
+   gutter, and a document that nests this far is exactly the one that must not run off the side. */
+.markdown-body .json-doc ul ul ul ul ul ul ul {
+  --mdr-json-level: var(--mdr-json-depth-7);
+  padding-left: 0.6em;
+}
+
+.markdown-body .json-doc ul ul ul ul ul ul ul ul {
+  --mdr-json-level: var(--mdr-json-depth-8);
+  padding-left: 0.6em;
+}
+
+.markdown-body .json-doc .json-key {
+  color: var(--mdr-json-level);
+  font-weight: 600;
+  /* A key can be any string at all, including one with no space in it for 400 characters. */
+  overflow-wrap: anywhere;
+}
+
+/* An index is a position rather than a name, so it takes the level's colour without the weight. */
+.markdown-body .json-doc .json-index {
+  color: var(--mdr-json-level);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Values: told apart by their own shape first                             */
+/* ---------------------------------------------------------------------- */
+
+.markdown-body .json-doc .json-string,
+.markdown-body .json-doc .json-number,
+.markdown-body .json-doc .json-boolean {
+  color: var(--mdr-json-ink);
+  /* A 512-character string, or a 60-digit number, wraps inside the column instead of pushing the
+     page sideways — .mdr-main clips rather than scrolls, so anything past the edge is lost. */
+  overflow-wrap: anywhere;
+}
+
+.markdown-body .json-doc .json-number {
+  font-variant-numeric: tabular-nums;
+}
+
+/* `null` is the one value with no shape of its own: it is not quoted, and it is a word like
+   `true`. Dim and italic is what tells it apart when colour cannot. */
+.markdown-body .json-doc .json-null {
+  color: var(--mdr-json-quiet);
+  font-style: italic;
+}
+
+.markdown-body .json-doc .json-empty {
+  color: var(--mdr-json-quiet);
+}
+
+/* `{7 keys}` / `[240 items]`: present on every container so a collapsed branch still says
+   something, and quiet enough that a screenful of them is not what you read first. */
+.markdown-body .json-doc .json-size {
+  margin-left: 0.5ch;
+  color: var(--mdr-json-quiet);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* "+1,204 more characters" — the truncation, said out loud, so nobody mistakes a cut value for
+   the whole one. */
+.markdown-body .json-doc .json-elided {
+  color: var(--mdr-json-quiet);
+  font-size: 0.9em;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Colour by type — the alternative                                        */
+/* ---------------------------------------------------------------------- */
+
+/* `data-json-colour="type"` on the root element. Keys stop carrying the level and go back to the
+   body foreground, which leaves three hues to tell apart instead of four; the rail keeps its
+   depth tint, because the rail is the indentation drawn in, and indentation is depth whatever
+   the text is coloured by. */
+:root[data-json-colour="type"] .markdown-body .json-doc .json-key {
+  color: var(--mdr-json-ink);
+}
+
+:root[data-json-colour="type"] .markdown-body .json-doc .json-index {
+  color: var(--mdr-json-quiet);
+}
+
+:root[data-json-colour="type"] .markdown-body .json-doc .json-string {
+  color: var(--mdr-json-string);
+}
+
+:root[data-json-colour="type"] .markdown-body .json-doc .json-number {
+  color: var(--mdr-json-number);
+}
+
+:root[data-json-colour="type"] .markdown-body .json-doc .json-boolean {
+  color: var(--mdr-json-boolean);
+}
+
+/* ---------------------------------------------------------------------- */
+/* The error view                                                          */
+/* ---------------------------------------------------------------------- */
+
+/* Two elements, one card: the sentence and the line it is about, sharing a spine in the caution
+   colour. This is what someone sees when the file they were sent is broken, and it is the one
+   screen in this view that has to be read rather than scanned. */
+.markdown-body .json-doc .json-error-summary {
+  margin: 0;
+  padding: var(--mdr-space-3) var(--mdr-space-4);
+  border-left: 0.25em solid var(--mdr-json-alarm);
+  border-radius: 0 var(--mdr-radius-md) 0 0;
+  background-color: var(--mdr-json-card);
+  color: var(--mdr-json-ink);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.markdown-body .json-doc .json-error-context {
+  margin: 0 0 var(--mdr-space-4);
+  padding: 0 var(--mdr-space-4) var(--mdr-space-3);
+  border-left: 0.25em solid var(--mdr-json-alarm);
+  border-radius: 0 0 var(--mdr-radius-md) 0;
+  background-color: var(--mdr-json-card);
+  color: var(--mdr-json-ink);
+  font-size: 0.875em;
+  line-height: 1.45;
+  /* The second line is a caret under one character of the first. Wrapping moves one and not the
+     other, so this block never wraps — it scrolls. print.css says the same thing again, because
+     printing otherwise turns every `pre` on the page into `pre-wrap`. */
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* ---------------------------------------------------------------------- */
+/* The text fallback                                                       */
+/* ---------------------------------------------------------------------- */
+
+/* Valid JSON, past a budget: the line saying so, then the document itself. */
+.markdown-body .json-doc .json-notice {
+  margin: 0 0 var(--mdr-space-4);
+  padding: var(--mdr-space-3) var(--mdr-space-4);
+  border-left: 0.25em solid var(--mdr-json-note);
+  border-radius: 0 var(--mdr-radius-md) var(--mdr-radius-md) 0;
+  background-color: var(--mdr-json-card);
+  color: var(--mdr-json-ink);
+  line-height: 1.5;
+}
+
+/* The document's own text. It does not wrap: the error above it counts a line and a column, and
+   a reader who has been sent to line 412, column 30 has to be able to count to them. */
+.markdown-body .json-doc .json-source {
+  margin: 0;
+  /* code.css paints every `pre` with --mdr-bg-subtle; this one takes the view's own token so
+     that print has a single list to redefine. */
+  background-color: var(--mdr-json-card);
+  color: var(--mdr-json-ink);
+  font-size: 0.875em;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+}

@@ -42,6 +42,33 @@
     --mdr-hr: #ABB2E6;
   }
 
+  /* The JSON view's own palette, on a selector that can actually win. The `:root` block above
+     is outweighed by tokens.css's `:root[data-theme="dark"]` — a media query carries no
+     specificity — so a dark-mode browser print keeps the dark values for everything it lists.
+     The in-app preview escapes that through `[data-print]` further down, but Ctrl+P in the web
+     version does not, and #D9C7FF keys on white paper are not a printout. An attribute selector
+     matches that weight and comes later, so this is the rule that wins. These are tokens.css's
+     light values, each measured at 4.5:1 or better on #FFFFFF. */
+  :root[data-theme] {
+    --mdr-json-depth-1: #300059;
+    --mdr-json-depth-2: #291E84;
+    --mdr-json-depth-3: #003F83;
+    --mdr-json-depth-4: #005576;
+    --mdr-json-depth-5: #006574;
+    --mdr-json-depth-6: #00736F;
+    --mdr-json-depth-7: #007E5F;
+    --mdr-json-depth-8: #13872E;
+    --mdr-json-string: #007562;
+    --mdr-json-number: #2A67BD;
+    --mdr-json-boolean: #A94E00;
+    --mdr-json-ink: #1F2328;
+    --mdr-json-quiet: #59636E;
+    --mdr-json-card: #F6F8FA;
+    --mdr-json-rule: #D1D9E0;
+    --mdr-json-alarm: #CF222E;
+    --mdr-json-note: #0969DA;
+  }
+
   body {
     height: auto;
     overflow: visible;
@@ -76,6 +103,30 @@
      the shape they happened to have it in while they read it. */
   .mdr-fold::details-content {
     content-visibility: visible !important;
+  }
+
+  /* And once more for a JSON document, which is nothing but nested <details>: the renderer
+     opens three levels and collapses the rest, so printing it as it stands would put a page of
+     `{7 keys}` summaries on paper instead of the document. */
+  .json-node::details-content {
+    content-visibility: visible !important;
+  }
+
+  /* With every branch open the twisty says nothing — it is a control, and paper has none. */
+  .markdown-body .json-doc .json-summary {
+    list-style: none;
+    break-inside: avoid;
+    break-after: avoid;
+  }
+
+  /* `pre` becomes `pre-wrap` below, which is right for a long line of source and wrong for the
+     excerpt: its second line is a caret under a character of its first, and wrapping moves one
+     without the other. json.css already outweighs every `pre-wrap` rule here, so the block keeps
+     `white-space: pre` on paper without help; what it needs from print is to shrink, because a
+     page has no scrollbar and the excerpt can be 122 characters wide. A very long one is still
+     cut at the page edge — a caret pointing at the wrong character would be worse. */
+  .markdown-body .json-doc .json-error-context {
+    font-size: 0.7em;
   }
 
   /* The control itself is chrome: by the time this matters the list is already open. */
@@ -154,6 +205,26 @@
   --mdr-link: #0969DA;
   --mdr-table-head-fg: #1B5E73;
   --mdr-hr: #ABB2E6;
+
+  /* See the @media print rule above: the JSON view's whole palette, forced to the values that
+     were measured on white. */
+  --mdr-json-depth-1: #300059;
+  --mdr-json-depth-2: #291E84;
+  --mdr-json-depth-3: #003F83;
+  --mdr-json-depth-4: #005576;
+  --mdr-json-depth-5: #006574;
+  --mdr-json-depth-6: #00736F;
+  --mdr-json-depth-7: #007E5F;
+  --mdr-json-depth-8: #13872E;
+  --mdr-json-string: #007562;
+  --mdr-json-number: #2A67BD;
+  --mdr-json-boolean: #A94E00;
+  --mdr-json-ink: #1F2328;
+  --mdr-json-quiet: #59636E;
+  --mdr-json-card: #F6F8FA;
+  --mdr-json-rule: #D1D9E0;
+  --mdr-json-alarm: #CF222E;
+  --mdr-json-note: #0969DA;
 }
 
 :root[data-print] body {
@@ -184,6 +255,24 @@
 /* See the @media print rule above: a folded section is still part of the document. */
 :root[data-print] .mdr-fold::details-content {
   content-visibility: visible !important;
+}
+
+/* And a collapsed JSON branch is still part of the document it belongs to. */
+:root[data-print] .json-node::details-content {
+  content-visibility: visible !important;
+}
+
+:root[data-print] .markdown-body .json-doc .json-summary {
+  list-style: none;
+  break-inside: avoid;
+  break-after: avoid;
+}
+
+/* See the @media print rule above: the excerpt shrinks so that more of a long line reaches the
+   page, and keeps `white-space: pre` from json.css so the caret keeps pointing at its own
+   character. */
+:root[data-print] .markdown-body .json-doc .json-error-context {
+  font-size: 0.7em;
 }
 
 :root[data-print] .mdr-main {

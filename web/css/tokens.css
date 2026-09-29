@@ -77,6 +77,48 @@
   --mdr-link: var(--mdr-accent);
   --mdr-table-head-fg: #1B5E73;
   --mdr-hr: #ABB2E6;
+
+  /* JSON (JSON-PLAN, "Colour"). Tokens of their own rather than the §14 heading hues above:
+     those six were each chosen for 4.5:1 against the page, one heading level at a time, and
+     were never required to stand apart from EACH OTHER — --mdr-h1 #0451A5 and --mdr-h6 #001080
+     are both blue, as are #569CD6 and #9CDCFE in dark. Six categorical hues also run out past
+     six levels, and a palette that wraps round makes level 1 and level 7 the same colour, which
+     destroys the one question depth colour exists to answer.
+
+     Depth is a sequential multi-hue ramp — violet through blue to green — monotone in contrast,
+     16.5:1 at the top level down to 4.6:1 at the eighth. Lightness alone carries the ordering,
+     which is what keeps it legible with any colour vision; hue adds a second channel for
+     everyone else. Worst adjacent step, in OKLab dE: 4.8 normal, 4.8 protanopia, 4.5
+     deuteranopia, 2.3 tritanopia. Past the eighth level the ramp holds at its last step rather
+     than starting again. Colour is never the only signal: indentation, a rail, the quotes round
+     a string and the key's own name all say it too.
+
+     The type hues are the Okabe-Ito colour-blind-safe trio moved onto this page — bluish green,
+     blue, vermillion — at ~5.6:1 each, worst pair dE 9.9 protanopia / 13.5 deuteranopia. Keys
+     keep the body foreground, so only three hues ever have to be told apart. */
+  --mdr-json-depth-1: #300059;      /* 16.54:1 on #FFFFFF */
+  --mdr-json-depth-2: #291E84;      /* 13.02:1 */
+  --mdr-json-depth-3: #003F83;      /* 10.30:1 */
+  --mdr-json-depth-4: #005576;      /*  8.20:1 */
+  --mdr-json-depth-5: #006574;      /*  6.74:1 */
+  --mdr-json-depth-6: #00736F;      /*  5.70:1 */
+  --mdr-json-depth-7: #007E5F;      /*  5.06:1 */
+  --mdr-json-depth-8: #13872E;      /*  4.63:1 */
+  --mdr-json-string: #007562;       /*  5.64:1 */
+  --mdr-json-number: #2A67BD;       /*  5.57:1 */
+  --mdr-json-boolean: #A94E00;      /*  5.56:1 */
+
+  /* Every other colour the view paints with, named here rather than reached for directly, so
+     that print — and the high-contrast theme this is waiting for — has one list to redefine
+     instead of a hunt through json.css. It matters more than it looks: a `@media print` block
+     cannot outweigh `:root[data-theme="dark"]` above, because a media query carries no
+     specificity, so a view that painted with --mdr-fg straight would print near-white on paper. */
+  --mdr-json-ink: var(--mdr-fg);            /* values, and keys when colouring by type */
+  --mdr-json-quiet: var(--mdr-fg-muted);    /* colons, sizes, elisions, {}, null, the twisty */
+  --mdr-json-card: var(--mdr-bg-subtle);    /* the error and notice cards, and the text blocks */
+  --mdr-json-rule: var(--mdr-border);
+  --mdr-json-alarm: var(--mdr-alert-caution);
+  --mdr-json-note: var(--mdr-alert-note);
 }
 
 :root[data-theme="dark"] {
@@ -118,4 +160,30 @@
   --mdr-link: var(--mdr-accent);
   --mdr-table-head-fg: #4EC9B0;
   --mdr-hr: #485973;
+
+  /* The same two ramps against #0D1117, solved for this page rather than inverted from the light
+     ones: depth 12.2:1 down to 4.6:1, worst adjacent step dE 5.2 normal, 4.2 protanopia, 5.2
+     deuteranopia, 2.6 tritanopia; types ~6.4:1 each, worst pair dE 10.5 / 15.9. The top of the
+     ramp stops short of white on purpose — at 15:1 there is no chroma left in sRGB, and a
+     level-1 key came out #EDE5FF, which is the body's own #E6EDF3 with a rumour of lilac. See
+     the light block above for why none of these are the heading hues. */
+  --mdr-json-depth-1: #D9C7FF;      /* 12.22:1 on #0D1117 */
+  --mdr-json-depth-2: #B1BBFF;      /* 10.29:1 */
+  --mdr-json-depth-3: #79B2FF;      /*  8.67:1 */
+  --mdr-json-depth-4: #21ACE9;      /*  7.34:1 */
+  --mdr-json-depth-5: #00A3BA;      /*  6.26:1 */
+  --mdr-json-depth-6: #009B95;      /*  5.52:1 */
+  --mdr-json-depth-7: #009571;      /*  4.99:1 */
+  --mdr-json-depth-8: #358E42;      /*  4.60:1 */
+  --mdr-json-string: #00A98F;       /*  6.37:1 */
+  --mdr-json-number: #5996F2;       /*  6.37:1 */
+  --mdr-json-boolean: #E27B39;      /*  6.42:1 */
+
+  /* See the light block: the rest of the view's colours, in one list for print to redefine. */
+  --mdr-json-ink: var(--mdr-fg);
+  --mdr-json-quiet: var(--mdr-fg-muted);
+  --mdr-json-card: var(--mdr-bg-subtle);
+  --mdr-json-rule: var(--mdr-border);
+  --mdr-json-alarm: var(--mdr-alert-caution);
+  --mdr-json-note: var(--mdr-alert-note);
 }
