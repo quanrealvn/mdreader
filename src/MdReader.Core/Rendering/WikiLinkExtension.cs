@@ -4,6 +4,7 @@ using Markdig.Parsers;
 using Markdig.Parsers.Inlines;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using MdReader.Core.Paths;
 
 namespace MdReader.Core.Rendering;
 
@@ -24,13 +25,16 @@ namespace MdReader.Core.Rendering;
 /// [[notes/Guide]]            -> notes/Guide.md           "notes/Guide"
 /// [[diagram.png]]            -> diagram.png              "diagram.png"
 /// </code>
-/// <para><c>.md</c> is appended only when the last segment has no extension at all, which is what those tools do.
-/// The fragment is slugged by the same rule as a heading id, so <c>#Getting started</c> finds
-/// <c>&lt;h2 id="getting-started"&gt;</c>.</para>
+/// <para><c>.md</c> is appended unless the last segment already ends in a recognised file type, so a note called
+/// <c>Release 1.2</c> keeps its name. The fragment is slugged by the same rule as a heading id, so
+/// <c>#Getting started</c> finds <c>&lt;h2 id="getting-started"&gt;</c>.</para>
 /// <para>A target that would leave the document's folder — absolute, rooted, a drive letter, a scheme, or any
-/// <c>..</c> segment — is not turned into a link at all; the text stays as the author typed it. The classifier would
-/// refuse to open such a link anyway, and text that was never a link is easier to understand than a link that does
-/// nothing when clicked.</para>
+/// <c>..</c> segment — is not turned into a link at all; the text stays as the author typed it.</para>
+/// <para>That is deliberately stricter than the rest of the reader: <c>[x](../notes.md)</c> is an ordinary relative
+/// link and <c>LinkClassifier</c> opens it, because a path someone wrote as a path is a path. <c>[[..]]</c> is a
+/// different thing — a name, not a route — and an author reaching out of the folder through a name syntax is either
+/// confused or hostile. Refusing costs a real document nothing, and text that was never a link is easier to
+/// understand than a link that does nothing when it is clicked.</para>
 /// </remarks>
 internal sealed class WikiLinkExtension : IMarkdownExtension
 {
@@ -78,6 +82,16 @@ internal sealed class WikiLinkParser : InlineParser
         ArgumentNullException.ThrowIfNull(processor);
 
         if (slice.PeekChar(1) != '[')
+        {
+            return false;
+        }
+
+        // Not while an ordinary link is still open. "[a [[b]] d](e.md)" is a link whose text happens to contain two
+        // brackets, and emitting a finished link into the middle of one being built cuts it in half: the anchor ends
+        // at "a ", the rest of the text falls outside it and "](e.md)" is swallowed. The document says something it
+        // did not say. Declining here leaves the whole thing to the link parser, which renders it exactly as it did
+        // before this extension existed.
+        if (InsideAnUnclosedLink(processor))
         {
             return false;
         }
@@ -136,6 +150,33 @@ internal sealed class WikiLinkParser : InlineParser
         link.Span = new SourceSpan(startPosition, processor.GetSourcePosition(slice.Start - 1));
         processor.Inline = link;
         return true;
+    }
+
+    /// <summary>
+    /// True while the ordinary link parser has an unclosed <c>[</c> on the go.
+    /// </summary>
+    /// <remarks>
+    /// <para>Markdig builds a link in two halves: <c>[</c> leaves a <see cref="LinkDelimiterInline"/> behind, the
+    /// text after it is parsed as ordinary inlines, and <c>](...)</c> later turns the delimiter and everything after
+    /// it into the anchor. A finished link handed straight to the processor in the middle of that is not part of the
+    /// text being collected, so the anchor closes early around whatever came before it.</para>
+    /// <para>Only the ancestors are walked, and that is deliberate. A delimiter is a container, so everything parsed
+    /// after the <c>[</c> is a child of it — walking the previous siblings as well finds nothing extra and costs a
+    /// pass over every inline already in the paragraph, which makes this quadratic in the number of links. A first
+    /// version did exactly that: 4,000 wiki links took 127 ms and 16,000 took 1,139 ms, against 38 ms and 168 ms for
+    /// the same number of ordinary links. The nesting limit caps this walk at 128.</para>
+    /// </remarks>
+    private static bool InsideAnUnclosedLink(InlineProcessor processor)
+    {
+        for (Inline? inline = processor.Inline; inline is not null; inline = inline.Parent)
+        {
+            if (inline is LinkDelimiterInline)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Splits what is between the brackets into the link's address and the words shown for it.</summary>
@@ -197,33 +238,88 @@ internal sealed class WikiLinkParser : InlineParser
             }
         }
 
-        // ".." anywhere, as a whole segment. "..." and "a..b" are ordinary names.
+        // Walk the segments: ".." anywhere means somewhere else ("..." and "a..b" are ordinary names), and an empty
+        // one means the target is not a file name at all. "[[a\]]" used to arrive here as "a\", whose last segment is
+        // empty, and came out as a link to a file called ".md" inside a folder "a".
         var remaining = path;
-        while (!remaining.IsEmpty)
+        while (true)
         {
             var separator = remaining.IndexOfAny('/', '\\');
             var segment = separator >= 0 ? remaining[..separator] : remaining;
-            if (segment.SequenceEqual(".."))
+            if (segment.IsEmpty || segment.SequenceEqual(".."))
             {
                 return true;
             }
 
-            remaining = separator >= 0 ? remaining[(separator + 1)..] : ReadOnlySpan<char>.Empty;
+            if (separator < 0)
+            {
+                break;
+            }
+
+            remaining = remaining[(separator + 1)..];
         }
 
         return false;
     }
 
+
     /// <summary>
-    /// Adds <c>.md</c> when the last segment has no extension. A target that names one — <c>[[diagram.png]]</c> — is
-    /// left alone and handled the way any other link to that file would be.
+    /// Adds <c>.md</c> unless the last segment already ends in a file type that is plainly a file type.
     /// </summary>
+    /// <remarks>
+    /// "Has a dot in it" is not the same question. A note is very often called <c>Release 1.2</c>, <c>Node.js</c> or
+    /// <c>meeting 2026.09.29</c>, and treating the dot as an extension gave every one of them a link to a file that
+    /// does not exist — which the classifier then refused to open, because only Markdown opens. A link that looks
+    /// like a link and does nothing when clicked is the exact thing this feature is supposed not to produce.
+    /// </remarks>
     private static string WithMarkdownExtension(ReadOnlySpan<char> path)
     {
         var separator = path.LastIndexOfAny('/', '\\');
         var name = separator >= 0 ? path[(separator + 1)..] : path;
-        return name.Contains('.') ? path.ToString() : string.Concat(path, MarkdownExtension);
+        var dot = name.LastIndexOf('.');
+
+        // dot > 0 so a name that merely starts with one (".profile") keeps its .md: the dot is part of the name.
+        if (dot > 0 && IsAFileType(name[dot..]))
+        {
+            return path.ToString();
+        }
+
+        return string.Concat(path, MarkdownExtension);
     }
+
+    /// <summary>
+    /// The extensions a wiki link may name without meaning "the Markdown note called this". Markdown's own come
+    /// from <see cref="MarkdownFileTypes"/> so the two can never disagree; the rest are the things people actually
+    /// put beside their notes. Anything else is treated as part of the note's name.
+    /// </summary>
+    private static bool IsAFileType(ReadOnlySpan<char> extension)
+    {
+        foreach (var markdown in MarkdownFileTypes.Extensions)
+        {
+            if (extension.Equals(markdown, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        foreach (var known in OtherFileTypes)
+        {
+            if (extension.Equals(known, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static readonly string[] OtherFileTypes =
+    [
+        ".txt", ".rtf", ".pdf", ".csv", ".tsv", ".json", ".xml", ".yml", ".yaml", ".toml", ".html", ".htm",
+        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".avif",
+        ".mp3", ".wav", ".ogg", ".mp4", ".webm", ".mov",
+        ".zip", ".gz", ".7z", ".tar",
+    ];
 
     /// <summary>
     /// Percent-encodes each segment, so a space or an accent in a note's name survives as an address. The separators
